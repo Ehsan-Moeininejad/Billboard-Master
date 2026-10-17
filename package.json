@@ -1,0 +1,13 @@
+{
+  "name": "billboard-insight",
+  "private": true,
+  "type": "module",
+  "description": "Billboard site analysis for Tehran — static app for GitHub Pages",
+  "scripts": {
+    "serve": "python3 -m http.server 8000",
+    "build:demo": "node build/demo.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  }
+}

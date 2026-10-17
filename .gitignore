@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.DS_Store
+data/ref-roads.json
+.cache/
+data/roads.json
+data/districts.json

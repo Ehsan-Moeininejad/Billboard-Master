@@ -1,0 +1,6 @@
+{
+  "_help": "Sources for the nightly price job (scripts/update-prices.mjs). type: csv | json. Columns are matched by name: name/نام, id/کد, lat/عرض, lng/طول, owner/مجری, price/قیمت لیست, negotiated/قیمت مذاکره‌شده, type/نوع.",
+  "sources": [
+    { "name": "team-sheet", "type": "csv", "url": "", "enabled": false }
+  ]
+}

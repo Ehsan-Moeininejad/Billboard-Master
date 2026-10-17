@@ -1,0 +1,106 @@
+# راه‌اندازی بیلبوردسنج روی GitHub
+
+بیلبوردسنج کاملاً روی GitHub اجرا می‌شود و به روشن بودن کامپیوتر شما نیازی ندارد.
+
+| بخش | کجا اجرا می‌شود | کی |
+|---|---|---|
+| سایت | GitHub Pages: `https://ehsan-moeininejad.github.io/Billboard-Master/` | همیشه در دسترس |
+| به‌روزرسانی سازه‌ها و قیمت‌ها | GitHub Actions، فایل `.github/workflows/data.yml` | هر 7 روز، جمعه 03:07 تهران |
+| انتشار دوباره سایت | GitHub Actions، فایل `.github/workflows/pages.yml` | بعد از هر به‌روزرسانی داده و هر تغییر کد |
+
+در هر انتشار، شبکه بزرگراه‌ها و مرز 22 منطقه تهران هم از OpenStreetMap دوباره ساخته می‌شود تا سایت سریع باز شود.
+
+---
+
+## قدم 1: ساخت ریپوی خالی (یک بار، 1 دقیقه)
+
+1. به https://github.com/new بروید.
+2. **Repository name:** `Billboard-Master`
+3. **Public** را انتخاب کنید. GitHub Pages رایگان فقط برای ریپوی عمومی کار می‌کند.
+4. هیچ تیکی نزنید (نه README، نه .gitignore، نه License).
+5. **Create repository** را بزنید.
+
+## قدم 2: توکن موقت برای راه‌اندازی (یک بار، 2 دقیقه)
+
+این توکن فقط به همین یک ریپو دسترسی دارد و بعد از 7 روز خودش باطل می‌شود.
+
+1. به https://github.com/settings/personal-access-tokens/new بروید.
+2. **Token name:** `billboard-setup`
+3. **Expiration:** 7 days
+4. **Repository access:** گزینه **Only select repositories** و از فهرست `Billboard-Master` را انتخاب کنید.
+5. در **Permissions → Repository permissions** این پنج مورد را روی **Read and write** بگذارید:
+   - Actions
+   - Administration
+   - Contents
+   - Pages
+   - Workflows
+6. **Generate token** را بزنید، توکن (با `github_pat_` شروع می‌شود) را کپی کنید و در گفتگو بفرستید.
+
+با این توکن کد push می‌شود، GitHub Pages فعال می‌شود و اولین به‌روزرسانی داده و انتشار سایت اجرا و بررسی می‌شود.
+بعد از اتمام کار می‌توانید توکن را از همان صفحه (Fine-grained tokens) پاک کنید.
+
+## قدم 3: زمان‌بندی مطمئن با cron-job.org (یک بار، 3 دقیقه)
+
+زمان‌بند خود GitHub برای ریپوهای عمومی گاهی اجرا نمی‌شود (برای کراولر شگفت‌انگیزها هم همین اتفاق افتاد). برای همین مثل پروژه‌های قبلی، cron-job.org هر 7 روز اجرا را شروع می‌کند. زمان‌بند GitHub فقط پشتیبان است.
+
+**الف) توکن دائمی برای cron-job.org**
+
+اگر توکنی که برای کراولر یا دایجست در cron-job.org گذاشته‌اید fine-grained است، آن را ویرایش کنید و `Billboard-Master` را به فهرست ریپوهایش اضافه کنید. در غیر این صورت یک توکن تازه بسازید:
+
+- **Token name:** `billboard-cron`
+- **Expiration:** بیشترین مدت ممکن (یا No expiration)
+- **Repository access:** فقط `Billboard-Master`
+- **Permissions:** فقط **Actions → Read and write**
+
+**ب) ساخت job در cron-job.org**
+
+1. در https://console.cron-job.org گزینه **Create cronjob** را بزنید.
+2. **Title:** `Billboard-Master weekly data`
+3. **URL:**
+   ```
+   https://api.github.com/repos/Ehsan-Moeininejad/Billboard-Master/actions/workflows/data.yml/dispatches
+   ```
+4. **Execution schedule:** گزینه Custom، هر هفته، روز **Friday**، ساعت **03:07**، منطقه زمانی **Asia/Tehran**.
+5. در تب **Advanced**:
+   - **Request method:** `POST`
+   - **Headers:**
+     - `Authorization` = `Bearer <توکن billboard-cron>`
+     - `Accept` = `application/vnd.github+json`
+     - `X-GitHub-Api-Version` = `2022-11-28`
+   - **Request body:** `{"ref":"main"}`
+6. ذخیره کنید و یک بار **Test run** بزنید. پاسخ درست `204` است.
+
+## قدم 4 (اختیاری): داده زنده ترافیک
+
+بدون کلید، ترافیک با مدل برآورد می‌شود. برای الگوی ترافیک واقعی:
+
+1. در https://platform.neshan.org یک کلید API بسازید و سرویس‌های تحلیل ترافیک، مسیریابی و جستجو را فعال کنید.
+2. در سایت، دکمه تنظیمات (چرخ‌دنده) ← کلید را وارد کنید ← «تست اتصال».
+3. کلید فقط در مرورگر همان کاربر ذخیره می‌شود. هر کاربر کلید خودش را وارد می‌کند، یا از پروکسی `proxy/cloudflare-worker.js` استفاده کنید (README).
+
+## قدم 5 (اختیاری): قیمت‌های تیم
+
+اگر تیم قیمت قطعی یا مذاکره‌شده دارد:
+
+1. یک گوگل‌شیت با ستون‌های نام یا کد سازه، مجری، قیمت لیست و قیمت مذاکره‌شده بسازید.
+2. File ← Share ← Publish to web ← CSV را بزنید و آدرس را کپی کنید.
+3. آدرس را در `data/price-sources.json` بگذارید و `enabled` را `true` کنید.
+
+به‌روزرسانی هفتگی، این قیمت‌ها را هم می‌خواند.
+
+---
+
+## اجرای دستی و عیب‌یابی
+
+- **به‌روزرسانی داده همین الان:** ریپو ← تب **Actions** ← **Weekly data update** ← **Run workflow**.
+- **انتشار دوباره سایت:** ریپو ← **Actions** ← **Deploy site** ← **Run workflow**.
+- **اجرای ناموفق (علامت قرمز):** روی اجرا بزنید تا مرحله خطادار دیده شود.
+  - اگر OpenStreetMap در دسترس نبوده باشد، سایت با داده قبلی منتشر می‌شود و هفته بعد درست می‌شود.
+  - اگر Rasamap در دسترس نبوده باشد، `data/market.json` قبلی می‌ماند.
+- **تازگی قیمت‌ها:** قیمت‌ها از مجموعه‌داده باز Rasamap می‌آیند و فقط وقتی تازه می‌شوند که Rasamap داده‌اش را به‌روز کرده باشد. تاریخ برداشت قیمت در تب «قیمت‌ها» و ستون «عمر قیمت» دیده می‌شود.
+
+## اشتراک با همکاران
+
+آدرس سایت را بفرستید: `https://ehsan-moeininejad.github.io/Billboard-Master/`
+
+هر کس سایت را باز کند، صفحه شروع و راهنمای قدم‌به‌قدم را می‌بیند. تغییرات دستی هر کاربر (قیمت، ضریب، نقاط مقایسه) فقط در مرورگر خود او ذخیره می‌شود.
