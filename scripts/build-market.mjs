@@ -68,7 +68,9 @@ function loadPlaces() {
 const norm = s => String(s || '').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[‌\-–—_]/g, ' ').replace(/\s+/g, ' ').trim();
 const core = name => norm(name).replace(/^(بزرگراه|آزادراه|اتوبان|خیابان|بلوار)\s+/, '').replace(/^شهید\s+/, '');
 
-const roads = loadRoads().map(r => ({ ...r, key: core(r.name) })).filter(r => r.key.length >= 3);
+// names too generic to identify a road from an address ("تهران" alone matches every listing)
+const STOP = new Set(['تهران', 'آزادراه', 'بزرگراه', 'اتوبان', 'کرج', 'شمال', 'جنوب', 'شرق', 'غرب', 'میدان', 'پل']);
+const roads = loadRoads().map(r => ({ ...r, key: core(r.name) })).filter(r => r.key.length >= 3 && !STOP.has(r.key));
 const places = loadPlaces();
 const MAJOR = roads.filter(r => /بزرگراه|آزادراه|اتوبان/.test(r.name) || r.cls === 'motorway' || r.cls === 'trunk');
 
@@ -105,6 +107,10 @@ function crossPoint(text, main) {
 // ── load & normalise ───────────────────────────────────────
 const raw = /^https?:/.test(SRC) ? await (await fetch(SRC)).json() : JSON.parse(readFileSync(SRC, 'utf8'));
 const inBox = x => x.lat > BOX.s && x.lat < BOX.n && x.lng > BOX.w && x.lng < BOX.e;
+// a geocoding slip inside Tehran is fixable; a point in another city is a listing from another city
+const nearBox = x => x.lat > BOX.s - 0.08 && x.lat < BOX.n + 0.08 && x.lng > BOX.w - 0.1 && x.lng < BOX.e + 0.1;
+// addresses that place the board outside the city even when the named freeway enters Tehran
+const OUTSIDE = /(چالوس|مرزن|تونل|سنگان|کرج|شهریار|اسلامشهر|لواسان|دماوند|رودهن|فشم|پرند|قزوین|اصفهان|شیراز|مشهد|تبریز|قم|کیش|رشت|ساری)/;
 const tehran = raw.filter(x => x.city === 'تهران' || (x.lat && inBox(x)));
 
 // listings that share one coordinate with many others got a city-level fallback from the geocoder
@@ -120,6 +126,8 @@ for (const x of tehran) {
   const text = `${x.name} ${x.location}`;
   let lat = x.lat, lng = x.lng, loc = 'source', note = '';
   const fallback = lat && counts.get(`${lat.toFixed(4)},${lng.toFixed(4)}`) >= 3;
+  if (lat && !fallback && !nearBox({ lat, lng })) { stats.outside++; continue; }
+  if (OUTSIDE.test(text) && !(lat && !fallback && inBox({ lat, lng }))) { stats.outside++; continue; }
   const road = namedRoad(text);
   if (road) {
     const near = lat && !fallback ? Math.min(...road.lines.map(l => nearestOn([lat, lng], l).d)) : Infinity;
