@@ -21,7 +21,17 @@ export function mergeMarket(inventory, market) {
     });
     updated++;
   }
-  return { added, updated };
+  // listings that left the market snapshot (sold out, moved to another city, failed the location check)
+  // are dropped, unless the user has worked on them
+  const live = new Set((market.items || []).map(m => m.id));
+  let removed = 0;
+  for (let i = inventory.length - 1; i >= 0; i--) {
+    const it = inventory[i];
+    if (it.source !== 'market' || live.has(it.id)) continue;
+    if (it.userMoved || it.priceSource === 'manual' || it.negotiated || it.coef) { it.delisted = true; continue; }
+    inventory.splice(i, 1); removed++;
+  }
+  return { added, updated, removed };
 }
 
 
