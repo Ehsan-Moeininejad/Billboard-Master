@@ -1426,10 +1426,12 @@ function scheduleRefresh(delay = 350) {
   clearTimeout(refreshTimer);
   refreshTimer = setTimeout(async () => {
     if (!invLayer || !map.hasLayer(invLayer)) return;
+    try {
     if (state.listTab === 'inventory' && (state.scope.mode === 'view' || state.rankDirty || state.ranking?.status !== 'ready')) { state.rankDirty = false; await rankView(); }
     else if (map.getZoom() >= 14 && !DEMO) await loadOsmStructures();
     drawStructures();
     if (state.listTab === 'inventory' && !state.selectedId) renderPanel();
+    } catch (e) { console.error('refresh', e); state.ranking = { status: 'error', list: [] }; if (!state.selectedId) renderPanel(); }
   }, delay);
 }
 
@@ -1711,10 +1713,21 @@ function openPlanner(tab) {
   if (tab) state.plan.tab = tab;
   $('#sheet').hidden = false;
   renderPlanner();
-  evaluateMarket().then(() => { computePlan(); renderPlanner(); });
+  evaluateMarket().then(() => {
+    computePlan(); renderPlanner();
+    if (state.listTab === 'inventory' && state.ranking?.status !== 'ready') rerank();
+  });
 }
 
-async function evaluateMarket(force = false) {
+// single flight: the structures tab and the planner often ask at the same moment on first load
+let evalFlight = null;
+function evaluateMarket(force = false) {
+  if (evalFlight && !force) return evalFlight;
+  evalFlight = evaluateMarketNow(force).catch(e => { console.error('evaluateMarket', e); state.plan.status = 'error'; })
+    .finally(() => { evalFlight = null; });
+  return evalFlight;
+}
+async function evaluateMarketNow(force = false) {
   const P = state.plan;
   const inv = state.inventory;
   const key = `${inv.map(x => x.id + x.type).join('|')}|${state.sites.map(s => s.id + (s.price || '')).join('|')}|${P.includeSites}|${state.traffic?.updatedAt || ''}`;
