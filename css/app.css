@@ -751,3 +751,6 @@ table.board-tbl td.rd { max-width: 150px; overflow: hidden; text-overflow: ellip
 .season-strip .sm[disabled] { cursor: default; }
 @media (max-width: 640px) { .season-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); } .season-strip .sm { height: 70px; } }
 .months-tbl .sel-sm { min-width: 130px; }
+
+/* dark basemap = OpenStreetMap tiles, inverted and toned down to sit under the dark UI */
+#map.bm-filter-dark .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.88) saturate(0.45); }

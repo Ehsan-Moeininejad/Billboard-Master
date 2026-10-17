@@ -116,8 +116,9 @@ function fitSites() {
 function setBasemap(key) {
   const bm = BASEMAPS[key] || BASEMAPS.dark;
   if (baseLayer) map.removeLayer(baseLayer);
-  baseLayer = L.tileLayer(bm.url, { attribution: bm.attr, subdomains: bm.sub || 'abc', maxZoom: 19, detectRetina: false, crossOrigin: true });
+  baseLayer = L.tileLayer(bm.url, { attribution: bm.attr, subdomains: bm.sub || 'abc', maxZoom: 19, detectRetina: false });
   baseLayer.addTo(map);
+  $('#map').classList.toggle('bm-filter-dark', bm.filter === 'dark');
   state.settings.basemap = key;
   document.querySelectorAll('.bm').forEach(b => b.classList.toggle('on', b.dataset.bm === key));
 }

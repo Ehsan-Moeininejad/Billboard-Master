@@ -118,16 +118,18 @@ export const OVERPASS_ENDPOINTS = [
   'https://overpass.kumi.systems/api/interpreter',
 ];
 
+// CARTO's free basemaps now need an API key, so both map styles use the standard OpenStreetMap tiles
+// (Persian street names in Tehran); the dark style is the same tiles with a CSS filter (see .bm-filter-dark).
 export const BASEMAPS = {
   dark: {
     fa: 'تیره',
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attr: '© OpenStreetMap · © CARTO', sub: 'abcd',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '© OpenStreetMap', sub: '', filter: 'dark',
   },
   streets: {
     fa: 'خیابان‌ها',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    attr: '© OpenStreetMap · © CARTO', sub: 'abcd',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attr: '© OpenStreetMap', sub: '',
   },
   satellite: {
     fa: 'ماهواره',
