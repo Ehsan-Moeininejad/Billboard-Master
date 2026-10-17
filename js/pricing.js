@@ -11,14 +11,18 @@ const KEY = 'billboard-insight:pricing:v2';
 
 export function defaultPricing() {
   return {
-    scenario: { adj: 0, useNegotiated: true, allowLonger: true },
+    scenario: { adj: 0, useNegotiated: true, allowLonger: true, seasonTraffic: true, seasonPrice: true },
+    months: {},         // Persian month n → { traffic?, price? } manual overrides of the seasonal factors
     rules: {},          // owner → { bundleOnly, minWeeks, discount }
     bundles: [],        // { id, name, owner, ids[], price (monthly, whole package), minWeeks, only }
     feed: { url: '', updatedAt: null, count: 0, status: '' },
   };
 }
 export function loadPricing() {
-  try { return { ...defaultPricing(), ...(JSON.parse(localStorage.getItem(KEY) || 'null') || {}) }; } catch { return defaultPricing(); }
+  try {
+    const d = defaultPricing(), s = JSON.parse(localStorage.getItem(KEY) || 'null') || {};
+    return { ...d, ...s, scenario: { ...d.scenario, ...(s.scenario || {}) }, months: s.months || {} };
+  } catch { return defaultPricing(); }
 }
 export function savePricing(p) { try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* memory only */ } }
 

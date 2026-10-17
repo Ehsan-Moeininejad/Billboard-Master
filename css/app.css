@@ -738,3 +738,16 @@ table.board-tbl td.rd { max-width: 150px; overflow: hidden; text-overflow: ellip
 @media (prefers-reduced-motion: reduce) { .w-task, .guide-btn { transition: none; } }
 .rank-pin { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: #0A0E15; background: #9DBBFF; border: 2px solid #0D1119; box-shadow: 0 2px 6px rgba(0,0,0,.5); }
 .rank-pin.t1 { background: var(--good); } .rank-pin.t2 { background: var(--warn); } .rank-pin.t3 { background: var(--bad); }
+
+/* ── v9: calendar / seasonality ─────────────────────────── */
+.season-strip { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 4px; margin-top: 10px; }
+.season-strip .sm { position: relative; height: 92px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; justify-content: flex-end; align-items: center; overflow: hidden; padding-bottom: 4px; color: var(--text-2); }
+.season-strip .sm i { position: absolute; inset: auto 0 0 0; background: color-mix(in srgb, var(--accent) 22%, transparent); border-top: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+.season-strip .sm b { position: relative; font-size: 10.5px; font-weight: 700; color: var(--text); }
+.season-strip .sm small { position: relative; font-size: 10px; color: var(--muted); direction: ltr; }
+.season-strip .sm.on { border-color: var(--accent); }
+.season-strip .sm.on i { background: color-mix(in srgb, var(--accent) 45%, transparent); border-top-color: var(--accent); }
+.season-strip .sm:not([disabled]):hover { border-color: var(--accent); }
+.season-strip .sm[disabled] { cursor: default; }
+@media (max-width: 640px) { .season-strip { grid-template-columns: repeat(6, minmax(0, 1fr)); } .season-strip .sm { height: 70px; } }
+.months-tbl .sel-sm { min-width: 130px; }

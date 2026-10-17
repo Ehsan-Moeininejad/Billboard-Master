@@ -67,6 +67,27 @@ export const WEEK = [
 ];
 export const WEEK_SUM = WEEK.reduce((s, d) => s + d.f, 0);
 
+// Persian months. traffic = Tehran traffic volume relative to the yearly average; price = rate-card
+// seasonality relative to the listed monthly price. These are starting assumptions (Nowruz holidays
+// empty the city in Farvardin, school reopening fills it from Mehr, pre-Nowruz shopping peaks in Esfand,
+// summer travel thins Tir–Mordad; agencies charge more for Esfand/Farvardin and the Mehr season).
+// The weekly Neshan job replaces the traffic factor of a month once it has observed that month
+// (data/traffic.json → seasonality), and every value can be changed in the app.
+export const MONTHS = [
+  { n: 1,  fa: 'فروردین',  traffic: 0.72, price: 1.10 },
+  { n: 2,  fa: 'اردیبهشت', traffic: 1.02, price: 1.00 },
+  { n: 3,  fa: 'خرداد',    traffic: 1.00, price: 1.00 },
+  { n: 4,  fa: 'تیر',      traffic: 0.95, price: 0.95 },
+  { n: 5,  fa: 'مرداد',    traffic: 0.93, price: 0.95 },
+  { n: 6,  fa: 'شهریور',   traffic: 0.98, price: 1.00 },
+  { n: 7,  fa: 'مهر',      traffic: 1.06, price: 1.05 },
+  { n: 8,  fa: 'آبان',     traffic: 1.06, price: 1.00 },
+  { n: 9,  fa: 'آذر',      traffic: 1.05, price: 1.00 },
+  { n: 10, fa: 'دی',       traffic: 1.03, price: 1.00 },
+  { n: 11, fa: 'بهمن',     traffic: 1.03, price: 1.05 },
+  { n: 12, fa: 'اسفند',    traffic: 1.08, price: 1.25 },
+];
+
 // Typical Tehran hourly share of daily traffic (weekday), un-normalised.
 const RAW_PROFILE = [1.6, 1.0, 0.7, 0.5, 0.5, 0.9, 2.6, 5.2, 6.3, 5.8, 5.4, 5.3,
                      5.3, 5.3, 5.4, 5.6, 6.0, 6.4, 6.5, 6.3, 5.7, 4.8, 3.9, 2.7];

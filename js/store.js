@@ -25,7 +25,7 @@ export const state = {
   districts: null,
   districtsApprox: false,
   board: { sort: 'score', dir: -1, districts: [], types: [], owner: '', pricedOnly: false, q: '', sel: new Set() },
-  plan: { districts: [], tab: 'plan', budget: 3e9, weeks: 4, objective: 'impressions', perRoad: 2, minScore: 0, types: [], includeSites: true, locks: {}, excludes: {}, entries: null, evalKey: '', result: null, status: 'idle', editBundle: null, priceQuery: '' },
+  plan: { districts: [], tab: 'plan', budget: 3e9, weeks: 4, start: 'now', cal: null, objective: 'impressions', perRoad: 2, minScore: 0, types: [], includeSites: true, locks: {}, excludes: {}, entries: null, evalKey: '', result: null, status: 'idle', editBundle: null, priceQuery: '' },
   settings: { providers: defaultProviderSettings(), occupancy: DEFAULTS.occupancy, campaignWeeks: DEFAULTS.campaignWeeks, basemap: 'dark' },
 };
 

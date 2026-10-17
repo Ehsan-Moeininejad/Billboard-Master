@@ -52,13 +52,15 @@ function makeOption(o, plan, pricing, skipped) {
     return null;
   }
   const weeks = billableWeeks(plan.weeks, o.minWeeks);
-  const cost = costFor(o.monthly, weeks);
-  const imp = o.members.reduce((a, m) => a + m.ev.weeklyImp, 0) * plan.weeks;
-  const expH = o.members.reduce((a, m) => a + m.ev.weeklyExpSec, 0) * plan.weeks / 3600;
+  // calendar: weekdays and Persian months the campaign covers (see calendar.js); 1 when not set
+  const cf = plan.cal?.impF ?? 1, pf = plan.cal?.priceF ?? 1;
+  const cost = costFor(o.monthly, weeks) * pf;
+  const imp = o.members.reduce((a, m) => a + m.ev.weeklyImp, 0) * plan.weeks * cf;
+  const expH = o.members.reduce((a, m) => a + m.ev.weeklyExpSec, 0) * plan.weeks * cf / 3600;
   // value-weighted versions (manual value coefficient per structure) drive the optimisation
-  const vImp = o.members.reduce((a, m) => a + m.ev.weeklyImp * (m.coef || 1), 0) * plan.weeks;
-  const vExpH = o.members.reduce((a, m) => a + m.ev.weeklyExpSec * (m.coef || 1), 0) * plan.weeks / 3600;
-  const ots = o.members.reduce((a, m) => a + m.ev.weeklyOts, 0) * plan.weeks;
+  const vImp = o.members.reduce((a, m) => a + m.ev.weeklyImp * (m.coef || 1), 0) * plan.weeks * cf;
+  const vExpH = o.members.reduce((a, m) => a + m.ev.weeklyExpSec * (m.coef || 1), 0) * plan.weeks * cf / 3600;
+  const ots = o.members.reduce((a, m) => a + m.ev.weeklyOts, 0) * plan.weeks * cf;
   return { ...o, ids: o.members.map(m => m.id), weeks, cost, imp, expH, vImp, vExpH, ots, roads: o.members.map(m => m.roadKey) };
 }
 

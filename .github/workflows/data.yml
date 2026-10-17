@@ -1,6 +1,7 @@
 name: Weekly data update
 
 # Every 7 days: real Tehran billboard structures and their listed prices (Rasamap open dataset, MIT),
+# traffic pattern and typical speed at each structure from the Neshan API (secret NESHAN_KEY),
 # location check against real OpenStreetMap roads, optional team price feed (data/price-sources.json),
 # then a fresh site deploy.
 # GitHub's own schedule is a backup; the reliable trigger is cron-job.org calling workflow_dispatch
@@ -47,6 +48,12 @@ jobs:
         continue-on-error: true
       - name: Build market (structures + prices)
         run: node scripts/build-market.mjs .cache/rs/flagged.json
+      - name: Traffic from Neshan (needs the NESHAN_KEY secret)
+        env:
+          NESHAN_KEY: ${{ secrets.NESHAN_KEY }}
+          NESHAN_MAX_CALLS: ${{ vars.NESHAN_MAX_CALLS || '800' }}
+        run: node scripts/update-traffic.mjs
+        continue-on-error: true
       - name: Team price feed (if configured)
         run: node scripts/update-prices.mjs
         continue-on-error: true
@@ -55,6 +62,7 @@ jobs:
           git config user.name "data-bot"
           git config user.email "data-bot@users.noreply.github.com"
           git add data/market.json data/prices.json data/price-history.csv
+          git add data/traffic.json data/traffic-history.csv 2>/dev/null || true
           git diff --cached --quiet || git commit -m "data: weekly snapshot $(date -u +%F)"
           git push
       - name: Redeploy site

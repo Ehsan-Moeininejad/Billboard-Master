@@ -6,6 +6,7 @@ import { approximateDistricts, districtOf, DISTRICT_CENTERS, pointInPoly } from 
 import { evalSite, buildOptions, optimize, budgetCurve, OBJECTIVES } from './planner.js';
 import { loadInventory, saveInventory, parseTable, TYPE_FA, SOURCE_FA } from './inventory.js';
 import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market.js';
+import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
 import * as net from './net.js';
 const { roadsNear, structuresIn, highwayNetwork } = net;
@@ -89,7 +90,7 @@ async function init() {
     if (!state.inventory.some(x => x.source === 'market')) { if (!state.pricing.bundles.length) state.pricing.bundles = m.bundles; persistPricing(); }
     mergeMarket(state.inventory, m); persistInventory();
   } else {
-    await Promise.all([loadMarket(), preloadRoads()]);
+    await Promise.all([loadMarket(), preloadRoads(), loadTraffic()]);
     refreshFeed();
   }
   updateDataChip();
@@ -214,7 +215,12 @@ function liveLineFor(site) {
 
 async function fetchLive(site) {
   const st = state.settings;
-  if (!anyConfigured(st) || !site.road) return;
+  if (!site.road) return;
+  if (!anyConfigured(st)) {
+    const sh = nearbyShared(site);
+    if (sh) { site.live = sh; if (!site.draft) emit('live'); else rerenderIfSelected(site); }
+    return;
+  }
   site.live = { status: { traffic: 'wait', speed: 'wait' } };
   rerenderIfSelected(site);
   const ll = liveLineFor(site);
@@ -422,6 +428,10 @@ function updateDataChip() {
     chip.innerHTML = `<i></i><span><b>${M ? num(M.count) + ' سازه واقعی' : 'مدل ترافیک'}</b><small>ترافیک با مدل · قیمت‌ها ${M ? 'از آگهی‌های بازار' : ''}</small></span>`;
     chip.title = 'منبع داده‌ها';
     return;
+  }
+  if (!primary && state.traffic?.items && Object.keys(state.traffic.items).length) {
+    cls = 'live'; label = 'ترافیک نشان (هفتگی)';
+    sub = `${num(Object.keys(state.traffic.items).length)} سازه · ${new Date(state.traffic.updatedAt).toLocaleDateString('fa-IR-u-nu-latn')}`;
   }
   if (primary) {
     const act = prof || sp;
@@ -698,8 +708,8 @@ function sourcesSec(site) {
     <div class="sec-title"><span>منابع داده این نقطه</span>${has ? `<a href="#" class="link" data-act="refresh-live">به‌روزرسانی</a>` : `<a href="#" class="link" data-act="settings">اتصال داده زنده</a>`}</div>
     ${row('هندسه و مشخصات معبر — OpenStreetMap', r.source === 'osm' ? 'ok' : 'err', r.source === 'osm' ? `${r.distance ?? 0} متر` : 'دستی')}
     ${row('مدل ترافیک تهران (پروفایل ساعتی)', 'ok', 'همیشه فعال')}
-    ${row('الگوی ترافیک 24 ساعته', !has ? '' : live?.status?.traffic || '', !has ? 'بدون کلید' : via('traffic'))}
-    ${row('سرعت مسیر', !has ? '' : live?.status?.speed || '', !has ? 'بدون کلید' : live?.speed ? `<bdi dir="ltr">${Math.round(live.speed.kmh)} km/h</bdi> · ${via('speed')}` : via('speed'))}
+    ${live?.shared ? row('الگوی ترافیک 24 ساعته', live.status.traffic, `نشان · به‌روزرسانی هفتگی (${new Date(live.at).toLocaleDateString('fa-IR-u-nu-latn')})`) : row('الگوی ترافیک 24 ساعته', !has ? '' : live?.status?.traffic || '', !has ? 'بدون کلید' : via('traffic'))}
+    ${live?.shared ? row('سرعت مسیر', live.status.speed, live.speed ? `<bdi dir="ltr">${Math.round(live.speed.kmh)} km/h</bdi> · نشان، هفتگی` : '—') : row('سرعت مسیر', !has ? '' : live?.status?.speed || '', !has ? 'بدون کلید' : live?.speed ? `<bdi dir="ltr">${Math.round(live.speed.kmh)} km/h</bdi> · ${via('speed')}` : via('speed'))}
   </div>`;
 }
 
@@ -1216,6 +1226,38 @@ async function loadOsmStructures(bounds = map.getBounds()) {
   }
 }
 
+/** Weekly Neshan traffic for every market structure (data/traffic.json, built by the data workflow). */
+async function loadTraffic() {
+  try {
+    const r = await fetch('data/traffic.json', { cache: 'no-cache' });
+    if (!r.ok) return;
+    const t = await r.json();
+    if (t?.items && Object.keys(t.items).length) state.traffic = t;
+    else if (t?.seasonality) state.traffic = { ...t, items: {} };
+  } catch { /* model profile only */ }
+}
+function sharedLive(rec) {
+  if (!rec) return null;
+  return {
+    traffic: rec.traffic ? { ...rec.traffic, provider: 'neshan' } : null,
+    speed: rec.speed && Number.isFinite(rec.speed.kmh) ? { ...rec.speed, hour: Number.isInteger(rec.speed.hour) ? rec.speed.hour : tehranHour(new Date(rec.at)) } : null,
+    status: { traffic: rec.traffic ? 'ok' : 'none', speed: rec.speed ? 'ok' : 'none' },
+    via: { traffic: rec.traffic ? 'neshan' : null, speed: rec.speed ? 'neshan' : null },
+    tried: { traffic: ['neshan'], speed: ['neshan'] }, at: rec.at, shared: true,
+  };
+}
+/** Shared Neshan data of the closest structure on the same road (≤ 250 m), for points analysed without a key. */
+function nearbyShared(site) {
+  const T = state.traffic?.items; if (!T) return null;
+  let best = null;
+  for (const it of state.inventory) {
+    const rec = T[it.id]; if (!rec) continue;
+    const d = dist([it.lat, it.lng], [site.lat, site.lng]);
+    if (d < 250 && (!best || d < best.d)) best = { d, rec };
+  }
+  return best ? sharedLive(best.rec) : null;
+}
+
 /** Load the prebuilt Tehran road file and mark the tiles it fully covers as loaded. */
 async function preloadRoads() {
   const d = await net.staticRoads?.();
@@ -1673,7 +1715,7 @@ function openPlanner(tab) {
 async function evaluateMarket(force = false) {
   const P = state.plan;
   const inv = state.inventory;
-  const key = `${inv.map(x => x.id + x.type).join('|')}|${state.sites.map(s => s.id + (s.price || '')).join('|')}|${P.includeSites}`;
+  const key = `${inv.map(x => x.id + x.type).join('|')}|${state.sites.map(s => s.id + (s.price || '')).join('|')}|${P.includeSites}|${state.traffic?.updatedAt || ''}`;
   if (!force && P.entries && P.evalKey === key) return;
   P.status = 'loading'; if (state.sheet === 'plan') renderPlanner();
   const ds = await loadDistricts();
@@ -1683,6 +1725,8 @@ async function evaluateMarket(force = false) {
   }
   await new Promise(r => setTimeout(r, 10));
   const ranked = rankStructures(inv, [...roadCache.ways.values()], state.settings);
+  // weekly Neshan data replaces the built-in Tehran profile where the data workflow has it
+  ranked.forEach(r => { const live = sharedLive(state.traffic?.items?.[r.id]); if (live && r.vsite) r.vsite.live = live; });
   const byId = new Map(inv.map(x => [x.id, x]));
   const entries = ranked.filter(r => r.ranked).map(r => ({
     id: r.id, name: r.name, owner: r.owner || '', type: r.type, price: r.price, negotiated: r.negotiated, lat: r.lat, lng: r.lng,
@@ -1702,10 +1746,41 @@ async function evaluateMarket(force = false) {
   revalue();
 }
 
+/** Months with overrides and Neshan-observed traffic merged in. */
+const months = () => monthTable(state.pricing.months, state.traffic?.seasonality || {});
+function planStart() {
+  const opts = startOptions();
+  return (opts.find(o => o.key === state.plan.start) || opts[0]);
+}
+function planCalendar() {
+  const sc = state.pricing.scenario;
+  return campaignFactors(planStart().date, state.plan.weeks, months(), { useTraffic: sc.seasonTraffic !== false, usePrice: sc.seasonPrice !== false });
+}
+const pctF = f => { const v = Math.round((f - 1) * 100); return v === 0 ? 'بدون تغییر' : `${v > 0 ? '+' : ''}${v}٪`; };
+
+/** 12-month strip: traffic, price and value per month, campaign months highlighted. */
+function seasonHTML(cal) {
+  const M = months(), cur = persianMonth(new Date());
+  const order = Array.from({ length: 12 }, (_, i) => M[(cur - 1 + i) % 12]);
+  const inCamp = new Set(cal.perMonth.map(x => x.n));
+  const maxV = Math.max(...M.map(m => m.traffic / m.price));
+  const opts = startOptions();
+  return `<div class="s-card season">
+    <div class="sec-title" style="margin-bottom:4px"><h3 style="margin:0">بهترین زمان کمپین</h3><span class="s-desc" style="margin:0">ارتفاع = ایمپرشن به ازای هر تومان (ترافیک ماه ÷ ضریب قیمت ماه) · روی ماه بزنید تا کمپین از اول همان ماه شروع شود</span></div>
+    <div class="season-strip">${order.map(m => {
+      const v = m.traffic / m.price, o = opts.find(x => x.key !== 'now' && persianMonth(x.date) === m.n);
+      return `<button class="sm ${inCamp.has(m.n) ? 'on' : ''}" ${o ? `data-act="pl-start" data-v="${o.key}"` : 'disabled'} title="${m.fa}: ترافیک ${pctF(m.traffic)} · قیمت ${pctF(m.price)}${m.trafficSource === 'neshan' ? ' · ترافیک از داده نشان' : ''}">
+        <i style="height:${Math.round(v / maxV * 100)}%"></i><b>${m.fa}</b><small>${m.traffic >= 1 ? '▲' : '▼'} ${Math.round(m.traffic * 100)}</small></button>`;
+    }).join('')}</div>
+    <p class="s-desc" style="margin:8px 0 0">این کمپین: ${cal.perMonth.map(x => `${x.days} روز ${x.fa}`).join(' + ')} · ایمپرشن ${pctF(cal.impF)} نسبت به هفته معمول · هزینه ${pctF(cal.priceF)} نسبت به قیمت لیست. ضریب ماه‌ها در تب «قیمت‌ها» قابل تغییر است.</p>
+  </div>`;
+}
+
 function computePlan() {
   const P = state.plan;
   if (!P.entries) return;
   revalue();
+  P.cal = planCalendar();
   const entries = P.entries.filter(e => (!P.types.length || P.types.includes(e.type === 'ad' ? 'bulletin' : e.type)) && (e.score ?? 0) >= P.minScore &&
     (!P.districts.length || P.districts.includes(e.district)));
   const { options, skipped } = buildOptions(entries, state.pricing, P);
@@ -1757,6 +1832,7 @@ function planHTML() {
       <h3>بودجه و مدت</h3>
       <div class="field"><label for="plBudget">بودجه کل کمپین</label><div class="inp-wrap"><input id="plBudget" class="inp ltr" inputmode="numeric" data-act="pl-budget" value="${num(P.budget)}"><span class="unit">تومان</span></div></div>
       <div class="field"><label for="plWeeks">مدت کمپین</label><select id="plWeeks" class="sel" data-act="pl-weeks">${WEEK_OPTIONS.map(w => `<option value="${w}" ${P.weeks === w ? 'selected' : ''}>${w} هفته</option>`).join('')}</select></div>
+      <div class="field"><label for="plStart">شروع کمپین</label><select id="plStart" class="sel" data-act="pl-start">${startOptions().map(o => `<option value="${o.key}" ${planStart().key === o.key ? 'selected' : ''}>${o.label}</option>`).join('')}</select><small>روزهای هفته و ماه‌های سال روی ایمپرشن و قیمت اثر دارند</small></div>
     </div>
     <div class="s-card">
       <h3>هدف کمپین</h3>
@@ -1766,6 +1842,8 @@ function planHTML() {
       <h3>سناریوی قیمت</h3>
       <div class="field"><label for="plAdj">تغییر قیمت لیست</label><select id="plAdj" class="sel" data-act="pl-adj">${ADJ_OPTIONS.map(a => `<option value="${a}" ${Math.abs((pr.scenario.adj || 0) - a) < 1e-6 ? 'selected' : ''}>${a === 0 ? 'قیمت لیست' : pct(a)}</option>`).join('')}</select><small>برای دیدن اثر تخفیف یا تورم قیمت روی پیشنهاد</small></div>
       <label class="switch-row"><input type="checkbox" data-act="pl-neg" ${pr.scenario.useNegotiated ? 'checked' : ''}><span class="switch"></span><span><b>قیمت مذاکره‌شده</b><small>هرجا وارد شده، به‌جای قیمت لیست</small></span></label>
+      <label class="switch-row"><input type="checkbox" data-act="pl-season-t" ${pr.scenario.seasonTraffic !== false ? 'checked' : ''}><span class="switch"></span><span><b>اثر ماه و روز هفته بر ترافیک</b><small>نوروز خلوت، مهر و اسفند شلوغ؛ جمعه و پنجشنبه کم‌تردد</small></span></label>
+      <label class="switch-row"><input type="checkbox" data-act="pl-season-p" ${pr.scenario.seasonPrice !== false ? 'checked' : ''}><span class="switch"></span><span><b>اثر فصل بر قیمت</b><small>نرخ بالاتر اسفند و فروردین و فصل مهر</small></span></label>
       <label class="switch-row"><input type="checkbox" data-act="pl-longer" ${pr.scenario.allowLonger ? 'checked' : ''}><span class="switch"></span><span><b>خرید حداقل دوره مجری</b><small>اگر حداقل مدت مجری بیشتر از کمپین است، هزینه کامل حساب شود</small></span></label>
     </div>
     <div class="s-card">
@@ -1815,7 +1893,7 @@ function planHTML() {
     excluded.length ? `<div class="note">${excluded.length} مورد را کنار گذاشته‌اید. <a href="#" data-act="pl-reset-ex" style="color:var(--accent)">بازگرداندن</a></div>` : '',
   ].join('');
   return `${guideHTML('plan')}<div class="plan-grid">${cfg}<main class="plan-main">
-    ${kpis}${warn}
+    ${kpis}${P.cal ? seasonHTML(P.cal) : ''}${warn}
     <div class="s-card"><h3>سازه‌های پیشنهادی</h3><p class="s-desc">هدف «${OBJECTIVES[P.objective].fa}» · ${P.weeks} هفته · از بین ${R.nOptions} گزینه خرید (${R.nEntries} سازه). قفل = حتماً در کمپین؛ ✕ = کنار بگذار و دوباره بچین. ضریب ارزشمندی هر سازه (لیدربورد یا تب قیمت‌ها) در هدف بهینه‌سازی ضرب می‌شود.</p>
       ${rows ? `<div class="tbl-wrap"><table class="cmp plan-tbl"><thead><tr><th></th><th>سازه</th><th>مجری</th><th>مدت قابل پرداخت</th><th>هزینه</th><th>ایمپرشن</th><th>مواجهه</th><th>CPM</th><th>ارزش خرید</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="s-desc">با این بودجه هیچ سازه‌ای قابل خرید نیست.</p>'}
       ${next ? `<h3 style="margin-top:16px">گزینه‌های بعدی (اگر بودجه بیشتر شود)</h3><ul class="next-list">${next}</ul>` : ''}
@@ -1893,9 +1971,19 @@ function pricesHTML() {
       ${(st.unknown || st.noCoords || st.outside) ? `<p class="s-desc" style="margin-top:8px">${num((st.unknown || 0) + (st.noCoords || 0))} آگهی بی‌مکان قابل‌اعتماد و ${num(st.outside || 0)} آگهی بیرون از تهران کنار گذاشته شده‌اند.</p>` : ''}
     </div>`;
   })() : '';
-  return `${mk}<div class="s-grid">
-      ${DEMO ? `<div class="s-card"><h3>به‌روزرسانی قیمت</h3><p class="s-desc">در این نسخه نمایشی قیمت‌ها همان آخرین برداشت بازارند. قیمت هر سازه را می‌توانید در جدول پایین دستی عوض کنید؛ تغییر شما فقط در همین مرورگر ذخیره می‌شود. اتصال فید قیمت روزانه (گوگل‌شیت یا CSV) در نسخه نصب‌شده روی GitHub فعال است.</p></div>` : `<div class="s-card"><h3>فید قیمت (به‌روزرسانی روزانه)</h3>
-        <p class="s-desc">یک فایل CSV یا JSON قیمت — مثلاً گوگل‌شیتی که تیم یا مجری‌ها به‌روز می‌کنند و «Publish to web» شده — یا خروجی روزانه خود مخزن (<span class="ltr">data/prices.json</span>) که GitHub Actions هر شب می‌سازد. ستون‌ها: نام یا کد سازه، مختصات (اختیاری)، مجری، قیمت لیست، قیمت مذاکره‌شده.</p>
+  const FAC = Array.from({ length: 17 }, (_, i) => +(0.6 + i * 0.05).toFixed(2));
+  const SRC = { default: 'پیش‌فرض', neshan: 'داده نشان', manual: 'دستی' };
+  const mrows = months().map(m => {
+    const o = pr.months[m.n] || {};
+    const sel = (k, cur, src) => `<select class="sel sel-sm" data-act="pr-month" data-n="${m.n}" data-k="${k}" aria-label="ضریب ${k === 'traffic' ? 'ترافیک' : 'قیمت'} ${m.fa}"><option value="" ${o[k] == null ? 'selected' : ''}>${Math.round(cur * 100)}٪ (${SRC[src]})</option>${FAC.map(f => `<option value="${f}" ${o[k] === f ? 'selected' : ''}>${Math.round(f * 100)}٪</option>`).join('')}</select>`;
+    return `<tr><th>${m.fa}</th><td>${sel('traffic', o.traffic ?? m.traffic, m.trafficSource)}</td><td>${sel('price', o.price ?? m.price, m.priceSource)}</td><td>${(m.traffic / m.price).toFixed(2)}</td></tr>`;
+  }).join('');
+  const seasonCard = `<div class="s-card"><div class="sec-title" style="margin-bottom:6px"><h3 style="margin:0">ضریب ماه‌های سال</h3>${Object.keys(pr.months).length ? '<a href="#" class="link" data-act="pr-months-reset">بازگشت به پیش‌فرض</a>' : ''}</div>
+      <p class="s-desc">ترافیک = حجم تردد آن ماه نسبت به میانگین سال؛ قیمت = نرخ آن ماه نسبت به قیمت لیست. پیش‌فرض‌ها برآوردند (نوروز خلوت، مهر و اسفند شلوغ، نرخ بالاتر اسفند و فروردین). ترافیکِ هر ماهی که به‌روزرسانی هفتگی نشان دیده باشد، با داده نشان جایگزین می‌شود. روزهای هفته هم جدا حساب می‌شوند: پنجشنبه 86٪ و جمعه 62٪ روز کاری.</p>
+      <div class="tbl-wrap"><table class="cmp months-tbl"><thead><tr><th>ماه</th><th>ترافیک</th><th>قیمت</th><th>ارزش زمانی</th></tr></thead><tbody>${mrows}</tbody></table></div></div>`;
+  return `${mk}${seasonCard}<div class="s-grid">
+      ${DEMO ? `<div class="s-card"><h3>به‌روزرسانی قیمت</h3><p class="s-desc">در این نسخه نمایشی قیمت‌ها همان آخرین برداشت بازارند. قیمت هر سازه را می‌توانید در جدول پایین دستی عوض کنید؛ تغییر شما فقط در همین مرورگر ذخیره می‌شود. اتصال فید قیمت روزانه (گوگل‌شیت یا CSV) در نسخه نصب‌شده روی GitHub فعال است.</p></div>` : `<div class="s-card"><h3>فید قیمت تیم (به‌روزرسانی هفتگی)</h3>
+        <p class="s-desc">یک فایل CSV یا JSON قیمت — مثلاً گوگل‌شیتی که تیم یا مجری‌ها به‌روز می‌کنند و «Publish to web» شده — یا خروجی خود مخزن (<span class="ltr">data/prices.json</span>) که GitHub Actions هر 7 روز می‌سازد. ستون‌ها: نام یا کد سازه، مختصات (اختیاری)، مجری، قیمت لیست، قیمت مذاکره‌شده.</p>
         <div class="field"><label for="feedUrl">آدرس فید</label><input id="feedUrl" class="inp ltr" data-act="pr-feedurl" value="${esc(f.url || '')}" placeholder="https://docs.google.com/spreadsheets/d/…/pub?output=csv"></div>
         <div class="btn-row"><button class="btn btn-primary" data-act="pr-feed">${icon('refresh')} دریافت الان</button></div>
         <div class="status-line ${f.status === 'err' ? 'err' : f.updatedAt ? 'ok' : 'wait'}">${f.status === 'err' ? 'دریافت فید ممکن نشد — آدرس یا دسترسی را بررسی کنید.' : f.updatedAt ? `آخرین به‌روزرسانی: ${new Date(f.updatedAt).toLocaleString('fa-IR-u-nu-latn')} · ${f.count} قیمت` : 'هنوز فیدی دریافت نشده است.'}</div>
@@ -1928,6 +2016,8 @@ async function onPlannerClick(t, e) {
   if (a === 'guide-close') { state.guide = null; renderPlanner(); return true; }
   if (a === 'pl-tab') { P.tab = t.dataset.v; renderPlanner(); return true; }
   if (a === 'pl-obj') { P.objective = t.dataset.v; replan(); return true; }
+  if (a === 'pl-start') { P.start = t.dataset.v; replan(); return true; }
+  if (a === 'pr-months-reset') { e.preventDefault(); pr.months = {}; persistPricing(); replan(); return true; }
   if (a === 'pl-dist') { const n = +t.dataset.v; P.districts = P.districts.includes(n) ? P.districts.filter(x => x !== n) : [...P.districts, n]; replan(); return true; }
   if (a === 'pl-type') { const v = t.dataset.v; P.types = P.types.includes(v) ? P.types.filter(x => x !== v) : [...P.types, v]; replan(); return true; }
   if (a === 'pl-lock') { P.locks[t.dataset.id] = !P.locks[t.dataset.id]; delete P.excludes[t.dataset.id]; replan(); return true; }
@@ -1958,6 +2048,16 @@ function onPlannerChange(t) {
   const P = state.plan, pr = state.pricing, a = t.dataset.act;
   if (a === 'pl-budget') { const v = parseNum(t.value); if (v > 0) { P.budget = v; replan(); } return true; }
   if (a === 'pl-weeks') { P.weeks = +t.value; replan(); return true; }
+  if (a === 'pl-start') { P.start = t.value; replan(); return true; }
+  if (a === 'pl-season-t') { pr.scenario.seasonTraffic = t.checked; persistPricing(); replan(); return true; }
+  if (a === 'pl-season-p') { pr.scenario.seasonPrice = t.checked; persistPricing(); replan(); return true; }
+  if (a === 'pr-month') {
+    const n = +t.dataset.n, k = t.dataset.k, v = t.value;
+    const o = { ...(pr.months[n] || {}) };
+    if (v === '') delete o[k]; else o[k] = +v;
+    if (Object.keys(o).length) pr.months[n] = o; else delete pr.months[n];
+    persistPricing(); replan(); return true;
+  }
   if (a === 'pl-adj') { pr.scenario.adj = +t.value; persistPricing(); replan(); return true; }
   if (a === 'pl-neg') { pr.scenario.useNegotiated = t.checked; persistPricing(); replan(); return true; }
   if (a === 'pl-longer') { pr.scenario.allowLonger = t.checked; persistPricing(); replan(); return true; }
@@ -2403,7 +2503,7 @@ function openWelcome() {
     <div class="w-tasks">${Object.entries(TASKS).map(([k, g]) => `<button class="w-task" data-task="${k}"><span class="w-ic">${icon(g.icon)}</span><span><b>${g.t}</b><small>${g.d}</small></span></button>`).join('')}</div>
     <div class="w-facts">
       <div><b>داده سازه‌ها</b><span>${M ? `${num(M.count)} سازه واقعی تهران از آگهی‌های عمومی اجاره بیلبورد` : 'فهرست سازه‌های واردشده'}${priceDate ? `؛ قیمت‌ها برداشت ${priceDate}` : ''}${DEMO ? '' : '؛ هر 7 روز به‌روز می‌شود'}. مکان بعضی سازه‌ها تقریبی است (حاشیه خط‌چین).</span></div>
-      <div><b>ترافیک</b><span>با مدل برآورد می‌شود: تعداد خط، نوع معبر، الگوی ساعتی ترافیک تهران و هندسه دید. عدد دقیق شمارش نیست.</span></div>
+      <div><b>ترافیک</b><span>${state.traffic?.items && Object.keys(state.traffic.items).length ? `الگوی ساعتی ترافیک و سرعت ${num(Object.keys(state.traffic.items).length)} سازه از API نشان، هر 7 روز به‌روز می‌شود؛ حجم تردد از تعداد خط و نوع معبر برآورد می‌شود.` : 'با مدل برآورد می‌شود: تعداد خط، نوع معبر، الگوی ساعتی ترافیک تهران و هندسه دید.'} اثر روزهای هفته و ماه‌های سال هم حساب می‌شود. عدد دقیق شمارش نیست.</span></div>
     </div>
     <dl class="w-gloss">
       <div><dt>ایمپرشن</dt><dd>تعداد دفعاتی که تابلو احتمالاً دیده می‌شود</dd></div>
