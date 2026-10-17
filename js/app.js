@@ -1263,9 +1263,11 @@ async function preloadRoads() {
   const d = await net.staticRoads?.();
   if (!d) return;
   d.ways.forEach(w => roadCache.ways.set(w.osmId, w));
+  // the file covers all of Tehran (the bbox is the city plus a margin), so every tile touching it counts as
+  // loaded; otherwise edge tiles would trigger slow Overpass queries for empty desert
   const [s, w, n, e] = d.bbox;
-  for (let la = Math.ceil(s / TILE); la < Math.floor(n / TILE); la++)
-    for (let lo = Math.ceil(w / TILE); lo < Math.floor(e / TILE); lo++) roadCache.tiles.add(`${la}:${lo}`);
+  for (let la = Math.floor(s / TILE); la <= Math.floor(n / TILE); la++)
+    for (let lo = Math.floor(w / TILE); lo <= Math.floor(e / TILE); lo++) roadCache.tiles.add(`${la}:${lo}`);
 }
 
 async function loadRoadsFor(bounds, classes = ['motorway', 'trunk', 'primary', 'secondary', 'motorway_link', 'trunk_link']) {
