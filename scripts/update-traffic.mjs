@@ -9,7 +9,9 @@
 // Each run refreshes the oldest points first, up to NESHAN_MAX_CALLS requests, so a free quota is respected.
 // Every snapshot is appended to data/traffic-history.csv; once a Persian month has been observed in at
 // least two weekly runs, its measured traffic level replaces the default month factor (seasonality).
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
+// one-line summary for the weekly email (scripts/weekly-report.mjs)
+const runLog = o => { try { mkdirSync('.cache', { recursive: true }); writeFileSync('.cache/traffic-run.json', JSON.stringify(o)); } catch { /* report only */ } };
 import { neshan } from '../js/net.js';
 import { nearestOnLine } from '../js/geo.js';
 import { persianMonth } from '../js/calendar.js';
@@ -17,11 +19,11 @@ import { tehranHour } from '../js/model.js';
 
 const KEY = process.env.NESHAN_KEY;
 const MAX_CALLS = +(process.env.NESHAN_MAX_CALLS || 800);
-if (!KEY) { console.log('NESHAN_KEY is not set; traffic stays on the model profile.'); process.exit(0); }
+if (!KEY) { console.log('NESHAN_KEY is not set; traffic stays on the model profile.'); runLog({ mode: 'nokey' }); process.exit(0); }
 const cfg = { key: KEY };
 
 const market = JSON.parse(readFileSync('data/market.json', 'utf8'));
-if (!existsSync('data/roads.json')) { console.log('data/roads.json missing (Overpass down?); skipping this week.'); process.exit(0); }
+if (!existsSync('data/roads.json')) { console.log('data/roads.json missing (Overpass down?); skipping this week.'); runLog({ mode: 'noroads' }); process.exit(0); }
 const roadsFile = JSON.parse(readFileSync('data/roads.json', 'utf8'));
 const unpack = a => { const o = []; let la = 0, lo = 0; for (let i = 0; i < a.length; i += 2) { la += a[i]; lo += a[i + 1]; o.push([la / 1e5, lo / 1e5]); } return o; };
 const ways = roadsFile.ways.filter(w => !w.cls.endsWith('_link')).map(w => ({ ...w, line: unpack(w.line) }));
@@ -167,6 +169,8 @@ for (const g of order) {
 }
 if (stop) console.warn(`Neshan stopped the run: HTTP ${stop.status} (${stop.message}) — quota or key problem; previous values kept.`);
 console.log(`calls ${calls}, refreshed ${ok}, empty ${failed}`);
+runLog({ mode: analyticsOK ? 'analytics' : historicalOK ? 'historical' : 'typical', calls, refreshed: ok, empty: failed, points: groups.size,
+  stop: stop ? `HTTP ${stop.status}` : null });
 
 // seasonality from the history: mean daytime congestion per Persian month, relative to the observed average
 if (!existsSync('data/traffic-history.csv')) writeFileSync('data/traffic-history.csv', 'date,persian_month,point,day_congestion,speed_kmh\n');
