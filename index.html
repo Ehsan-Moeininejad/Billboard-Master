@@ -39,6 +39,8 @@
       <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
       <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></symbol>
       <symbol id="i-sort" viewBox="0 0 24 24"><path d="M8 4v16M4 16l4 4 4-4M16 20V4M12 8l4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 22c4 0 7-2.7 7-6.8 0-3.1-1.9-5.5-3.6-7.2-.3 1.8-1.3 3-2.4 3.4.4-3.1-1-6.3-3.8-8.4.1 2.8-1.6 4.9-3.2 6.7C4.8 11 4 12.8 4 15.2 4 19.3 7.6 22 12 22z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 22c-1.8 0-3-1.2-3-2.9 0-1.9 1.6-3 3-4.6 1.4 1.6 3 2.7 3 4.6 0 1.7-1.2 2.9-3 2.9z" fill="currentColor"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3" fill="none" stroke="currentColor" stroke-width="2"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></symbol>
     </defs>
   </svg>
@@ -66,6 +68,7 @@
   <div class="map-tools">
     <div class="tool-group">
       <button class="tool" id="btnLayers" aria-label="لایه‌ها" data-tip="لایه‌ها"><svg><use href="#i-layers"/></svg></button>
+      <button class="tool" id="btnHot" aria-label="هات‌اسپات‌های تجمع مردم" data-tip="هات‌اسپات‌ها: مال، راسته خرید، بورس کالا، رستوران‌ها…"><svg><use href="#i-flame"/></svg></button>
       <button class="tool" id="btnSettings" aria-label="تنظیمات و اتصال داده" data-tip="تنظیمات و داده"><svg><use href="#i-settings"/></svg><span class="tool-dot" id="dataDot"></span></button>
       <button class="tool" id="btnHelp" aria-label="روش محاسبه" data-tip="روش محاسبه و محدودیت‌ها"><svg><use href="#i-info"/></svg></button>
     </div>
@@ -75,8 +78,10 @@
       <div class="pop-title">لایه‌های کمکی</div>
       <label class="switch-row"><input type="checkbox" id="lyrHighways"><span class="switch"></span><span><b>شبکه بزرگراه‌ها</b><small>بزرگراه‌ها و آزادراه‌های تهران</small></span></label>
       <label class="switch-row"><input type="checkbox" id="lyrDistricts"><span class="switch"></span><span><b>مناطق شهرداری</b><small>22 منطقه تهران؛ کلیک روی منطقه، سازه‌هایش را نشان می‌دهد</small></span></label>
+      <label class="switch-row"><input type="checkbox" id="lyrHot"><span class="switch"></span><span><b>هات‌اسپات‌ها</b><small>مال، راسته خرید، بورس کالا، رستوران‌ها، مترو؛ فیلترها با دکمه شعله</small></span></label>
       <label class="switch-row"><input type="checkbox" id="lyrStructures"><span class="switch"></span><span><b>سازه‌های موجود</b><small>سازه‌های واقعی بازار و فهرست شما (+ پل‌های OSM در زوم 14+)</small></span></label>
     </div>
+    <div class="layers-pop hot-pop" id="hotPop" hidden></div>
   </div>
 
   <div class="mode-hint" id="modeHint"><svg><use href="#i-target"/></svg><span>روی هر نقطه از بزرگراه یا پل کلیک کنید تا تحلیل شود</span></div>

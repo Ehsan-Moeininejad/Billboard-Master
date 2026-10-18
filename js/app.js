@@ -8,6 +8,7 @@ import { loadInventory, saveInventory, parseTable, TYPE_FA, SOURCE_FA } from './
 import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market.js';
 import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
+import { createHotspots } from './hotlayer.js';
 import * as net from './net.js';
 const { roadsNear, structuresIn, highwayNetwork } = net;
 import * as providers from './providers.js';
@@ -24,7 +25,7 @@ const $ = s => document.querySelector(s);
 const icon = (id, cls = '') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 const isMobile = () => matchMedia('(max-width: 860px)').matches;
 
-let map, baseLayer, hwLayer = null, searchMarker = null;
+let map, baseLayer, hwLayer = null, searchMarker = null, hot = null;
 const siteLayers = new Map();
 const structCache = { tiles: new Set(), items: new Map() };
 
@@ -70,6 +71,16 @@ async function init() {
   map.on('moveend', () => { scheduleRefresh(); if (state.listTab === 'finder' && !state.selectedId) renderPanel(); });
 
   bindChrome();
+  if (!DEMO) {
+    hot = createHotspots({
+      map, $, icon, esc, toast, copyText,
+      structures: () => allStructures().filter(st => st.source !== 'osm'),
+      structInfo: st => { const r = rankById.get(st.id), pe = state.plan.entries?.find(x => x.id === st.id); return { score: r?.score ?? pe?.score ?? null, valueIdx: pe?.valueIdx ?? null }; },
+      focusStructure,
+      districtOf: (lat, lng) => state.districts && !state.districtsApprox ? districtOf(lat, lng, state.districts) : null,
+      ensureDistricts: () => loadDistricts(),
+    });
+  } else $('#btnHot').hidden = true;
   subscribe(() => { drawAllSites(); renderPanel(); updateDataChip(); });
   drawAllSites();
   renderPanel();
@@ -1402,6 +1413,14 @@ function drawStructures() {
   });
 }
 
+// used by hotspot popups only (the structure list keeps its own handler above)
+function focusStructure(id) {
+  const st = allStructures().find(x => x.id === id); if (!st) return;
+  if (!$('#lyrStructures').checked) setStructuresLayer(true);
+  map.flyTo([st.lat, st.lng], Math.max(map.getZoom(), 15), { duration: 0.5 });
+  setTimeout(() => invLayer?.eachLayer(l => { const ll = l.getLatLng?.(); if (ll && Math.abs(ll.lat - st.lat) < 1e-7 && Math.abs(ll.lng - st.lng) < 1e-7) l.openPopup(); }), 900);
+}
+
 function structPopup(st, r) {
   const pe = state.plan.entries?.find(x => x.id === st.id);
   if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, imp: pe.ev.dailyImp, exp: pe.ev.exp };
@@ -1410,7 +1429,9 @@ function structPopup(st, r) {
   const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${st.priceEstimated && st.priceSource !== 'manual' ? ' · برآورد منبع' : ''}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
   const addr = st.address && st.address !== st.name ? `<div class="pop-addr">${esc(st.address)}</div>` : '';
   const loc = locApprox(st) ? `<div class="pop-warn">${icon('target')} ${LOC_FA[st.loc] || 'مکان تقریبی'}${st.locNote ? ` (${esc(st.locNote)})` : ''} — با کشیدن نشانگر اصلاح کنید</div>` : '';
-  return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${loc}${stats}
+  const hs = hot?.at(st.lat, st.lng);
+  const hsLine = hs ? `<button class="pop-hot" data-act="hs-open" data-id="${hs.id}">${icon('flame')} داخل هات‌اسپات «${esc(hs.title)}» · پتانسیل ${hs.score}</button>` : '';
+  return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${loc}${hsLine}${stats}
     <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${st.lat}" data-lng="${st.lng}" data-kind="${st.type}" data-name="${esc(st.name)}" data-price="${st.price || ''}">${icon('target')} تحلیل کامل</button>`;
 }
 
@@ -2582,6 +2603,15 @@ function openHelp() {
     <p>ضریب روزهای هفته: ${WEEK.map(w => `${w.fa} ${w.f}`).join('، ')}. ماهانه = هفتگی × 30/7. امتیاز 0 تا 100 = 70٪ حجم ایمپرشن روزانه (مقیاس لگاریتمی) + 30٪ زمان مواجهه.</p>
     <h3>5. رتبه‌بندی سازه‌ها و جایگاه‌یابی</h3>
     <p>سازه‌های موجود (فهرست واردشده، ثبت دستی، و پل‌های عابر و تابلوهای OpenStreetMap) به نزدیک‌ترین معبر اصلی وصل و با همین مدل رتبه‌بندی می‌شوند. جایگاه‌یابی همه معابر محدوده نقشه را هر 120 متر می‌سنجد، نقاط نزدیک سازه‌های موجود را کنار می‌گذارد و بهترین‌ها را با حداقل 600 متر فاصله از هم پیشنهاد می‌دهد. این دو بخش سهمیه API مصرف نمی‌کنند؛ «تحلیل کامل» داده زنده را اضافه می‌کند.</p>
+    <h3>6. هات‌اسپات‌ها</h3>
+    <p>هات‌اسپات‌ها جاهایی‌اند که مردم جمع می‌شوند: مال و بازار، راسته خرید، بورس‌های تخصصی کالا (موبایل، طلا، لوستر، پوشاک و…)، قطب‌های رستوران و کافه، مراکز سرگرمی، ایستگاه‌های مترو و پایانه‌ها، و دانشگاه‌ها. نقاط از OpenStreetMap خوانده و تجمع‌های پرتراکم با جست‌وجوی چگالی پیدا می‌شوند.</p>
+    <ul>
+      <li><b>شکل</b>: فقط هسته پرتراکم هر تجمع نگه داشته می‌شود. برای راسته‌ها، بورس‌ها و رستوران‌ها، جایی جزو شکل است که دست‌کم 3 تا 4 مغازه در 60 تا 70 متری‌اش باشد و تراکمش دست‌کم 35٪ تراکم شلوغ‌ترین نقطه همان تجمع باشد. شکل هیچ‌وقت بیش از 300 تا 350 متر از شلوغ‌ترین نقطه فاصله نمی‌گیرد. حریم مال‌ها 60 متر و حریم ایستگاه‌های مترو 150 متر (تقاطعی 220 متر) است. اگر هسته‌ها از هم جدا باشند، هر کدام یک چندضلعی جدا می‌شود و مغازه‌های پراکنده بیرون می‌مانند. تعداد مغازه‌ها و تراکم فقط از داخل همین شکل شمرده می‌شود.</li>
+      <li><b>پتانسیل</b> 0 تا 100 = وزن نوع مکان × (45٪ جایگاه اندازه در بین هم‌نوع‌ها + 55٪ اندازه نسبت به یک هات‌اسپات قوی) + امتیاز هم‌پوشانی با انواع دیگر. 75 به بالا «خیلی زیاد»، 55 به بالا «زیاد».</li>
+      <li><b>خروجی مختصات</b>: هر هات‌اسپات را می‌توان به‌صورت چندضلعی (رئوس lat,lng؛ برای چند بخش، چند چندضلعی)، GeoJSON، WKT یا مرکز و شعاعِ دایره‌ای که کل محدوده را می‌پوشاند کپی کرد، یا همه هات‌اسپات‌های فیلترشده را CSV، GeoJSON و KML گرفت؛ برای جئوفنس تبلیغات موبایل و پلتفرم‌های نقشه.</li>
+      <li><b>انتخاب و اشتراک</b>: با تیک کنار هر هات‌اسپات چند تا را انتخاب کنید، فقط همان‌ها را روی نقشه نگه دارید، مختصاتشان را یک‌جا کپی کنید یا لینکش را برای همکار بفرستید. دکمه‌های «برای تبلیغ چه چیزی؟» نوع‌های مناسب هر دسته کالا را یک‌جا انتخاب می‌کنند. پاپ‌آپ هر هات‌اسپات سازه‌های داخل محدوده و سازه‌های مسیر رسیدن (تا 900 متر) را با امتیاز و قیمت نشان می‌دهد؛ «اوج حضور» الگوی معمول هر نوع مکان است، نه داده اندازه‌گیری‌شده.</li>
+      <li>کامل بودن داده به ثبت مغازه‌ها در OpenStreetMap بستگی دارد؛ بعضی راسته‌ها کمتر از واقع دیده می‌شوند.</li>
+    </ul>
     <h3>محدودیت‌ها</h3>
     <ul>
       <li>حجم تردد مدل‌سازی شده است؛ اگر آمار شمارش واقعی دارید، در «مشخصات معبر» وارد کنید تا جایگزین شود.</li>
@@ -2614,7 +2644,9 @@ function bindChrome() {
 
   $('#basemaps').innerHTML = Object.entries(BASEMAPS).map(([k, b]) => `<button class="bm bm-${k}" data-bm="${k}"><i></i>${b.fa}</button>`).join('');
   $('#basemaps').addEventListener('click', e => { const b = e.target.closest('.bm'); if (b) { setBasemap(b.dataset.bm); save(); } });
-  $('#btnLayers').addEventListener('click', e => { e.stopPropagation(); const p = $('#layersPop'); p.hidden = !p.hidden; $('#btnLayers').classList.toggle('on', !p.hidden); });
+  $('#btnLayers').addEventListener('click', e => { e.stopPropagation(); const p = $('#layersPop'); p.hidden = !p.hidden; $('#btnLayers').classList.toggle('on', !p.hidden); $('#hotPop').hidden = true; $('#btnHot').classList.remove('on'); });
+  $('#btnHot').addEventListener('click', e => { e.stopPropagation(); $('#layersPop').hidden = true; $('#btnLayers').classList.remove('on'); $('#btnHot').classList.toggle('on', !!hot?.toggle()); });
+  document.addEventListener('click', e => { const b = e.target.closest('[data-act="hs-open"]'); if (b) { map.closePopup(); hot?.open(b.dataset.id); } });
   document.addEventListener('click', e => { if (!e.target.closest('.map-tools')) closePops(); });
   $('#lyrHighways').addEventListener('change', e => toggleHighways(e.target.checked));
   $('#lyrStructures').addEventListener('change', e => setStructuresLayer(e.target.checked));
@@ -2658,7 +2690,7 @@ function setPanelSize(cls) {
   p.classList.remove('tall', 'mini');
   if (cls) p.classList.add(cls);
 }
-function closePops() { $('#layersPop').hidden = true; $('#btnLayers').classList.remove('on'); }
+function closePops() { $('#layersPop').hidden = true; $('#btnLayers').classList.remove('on'); $('#hotPop').hidden = true; $('#btnHot').classList.remove('on'); }
 
 function toast(msg, kind = '') {
   const el = document.createElement('div');
