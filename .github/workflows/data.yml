@@ -1,9 +1,8 @@
 name: Weekly data update
 
 # Every 7 days: real Tehran billboard structures and their listed prices (Rasamap open dataset, MIT),
-# traffic pattern and typical speed at each structure from the Neshan API (secret NESHAN_KEY),
-# location check against real OpenStreetMap roads, optional team price feed (data/price-sources.json),
-# then a fresh site deploy.
+# traffic at each structure from the Neshan API (secret NESHAN_KEY), optional team price feed
+# (data/price-sources.json), a fresh site deploy, and a summary email (secrets SMTP_USER, SMTP_PASS, MAIL_TO).
 # GitHub's own schedule is a backup; the reliable trigger is cron-job.org calling workflow_dispatch
 # (see SETUP.md).
 on:
@@ -30,7 +29,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Keep last week's data for the comparison
+        run: |
+          mkdir -p .cache
+          cp data/market.json .cache/prev-market.json 2>/dev/null || true
       - name: Download market listings
+        id: download
         run: |
           mkdir -p .cache/rs
           base=https://raw.githubusercontent.com/alireza-zareian/Rasamap-Repository/main/scraper
@@ -44,20 +48,25 @@ jobs:
             cp .cache/rs/billboards.json .cache/rs/flagged.json
           fi
       - name: Real roads for the location check
+        id: roads
         run: node scripts/build-roads.mjs
         continue-on-error: true
       - name: Build market (structures + prices)
+        id: market
         run: node scripts/build-market.mjs .cache/rs/flagged.json
       - name: Traffic from Neshan (needs the NESHAN_KEY secret)
+        id: traffic
         env:
           NESHAN_KEY: ${{ secrets.NESHAN_KEY }}
           NESHAN_MAX_CALLS: ${{ vars.NESHAN_MAX_CALLS || '800' }}
         run: node scripts/update-traffic.mjs
         continue-on-error: true
       - name: Team price feed (if configured)
+        id: prices
         run: node scripts/update-prices.mjs
         continue-on-error: true
       - name: Commit snapshot
+        id: commit
         run: |
           git config user.name "data-bot"
           git config user.email "data-bot@users.noreply.github.com"
@@ -66,6 +75,24 @@ jobs:
           git diff --cached --quiet || git commit -m "data: weekly snapshot $(date -u +%F)"
           git push
       - name: Redeploy site
+        id: deploy
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run pages.yml --ref main
+      - name: Weekly report
+        if: always()
+        env:
+          MARKET_OUTCOME: ${{ steps.download.outcome == 'success' && steps.market.outcome || 'failure' }}
+          ROADS_OUTCOME: ${{ steps.roads.outcome }}
+          TRAFFIC_OUTCOME: ${{ steps.traffic.outcome }}
+          PRICES_OUTCOME: ${{ steps.prices.outcome }}
+          COMMIT_OUTCOME: ${{ steps.commit.outcome == 'success' && steps.deploy.outcome || 'failure' }}
+          PAGE_URL: ${{ vars.PAGE_URL }}
+        run: node scripts/weekly-report.mjs
+      - name: Email the report
+        if: always()
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python3 scripts/send-report.py
