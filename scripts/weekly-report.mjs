@@ -69,53 +69,101 @@ if (scrapedAge != null && scrapedAge > 45) alerts.push(`قیمت‌ها ${num(sc
 if (prev && !added.length && !removed.length && !moves.length) alerts.push('این هفته در فهرست و قیمت‌ها تغییری نبود (منبع داده‌اش را تازه نکرده است).');
 if (!prev) alerts.push('اولین گزارش است؛ مقایسه با هفته قبل از گزارش بعدی شروع می‌شود.');
 
-// ── html (email-safe: tables, inline styles, light only) ───
-const C = { ink: '#1A2233', muted: '#6B7588', line: '#E4E8EF', soft: '#F5F7FB', accent: '#3D6FE8', good: '#12A37F', warn: '#C98A06', bad: '#D64545' };
-const mark = s => `<span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:11px;font-weight:700;color:#fff;background:${s === '✓' ? C.good : s === '✗' ? C.bad : s === '!' ? C.warn : C.muted}">${s === '—' ? '–' : s}</span>`;
-const kpi = (label, value, sub) => `<td style="padding:12px;background:${C.soft};border-radius:10px;width:33%;vertical-align:top"><div style="font-size:12px;color:${C.muted}">${label}</div><div style="font-size:20px;font-weight:700;color:${C.ink};margin-top:2px">${value}</div>${sub ? `<div style="font-size:12px;color:${C.muted};margin-top:2px">${sub}</div>` : ''}</td>`;
-const list = (title, items, fmt, more) => !items.length ? '' : `
-  <h3 style="font-size:15px;margin:22px 0 8px;color:${C.ink}">${title}</h3>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">${items.map(fmt).join('')}</table>
-  ${more > 0 ? `<div style="font-size:12px;color:${C.muted};margin-top:6px">و ${num(more)} مورد دیگر</div>` : ''}`;
-const line = (a, b) => `<tr><td style="padding:7px 0;border-bottom:1px solid ${C.line};font-size:13.5px;color:${C.ink}">${a}</td><td style="padding:7px 0;border-bottom:1px solid ${C.line};font-size:13px;color:${C.muted};text-align:left;white-space:nowrap">${b}</td></tr>`;
+// ── html ───────────────────────────────────────────────────
+// Same visual system as the research-digest email (Digikala red, white cards on light grey) and the same
+// email-safe rules: tables only, and font + direction repeated on every cell, because Gmail drops styles
+// that would otherwise be inherited from <body>.
+const FONT = "Vazirmatn,Vazir,'Vazir Matn',Tahoma,'Segoe UI',Arial,sans-serif";
+const C = { red: '#EF4056', redSoft: '#FFF2F4', ink: '#232933', soft: '#4F545C', mute: '#81858B', line: '#E4E4E7', bg: '#F0F0F1',
+  good: '#00A049', goodSoft: '#E8F7EE', warn: '#C27C0E', warnSoft: '#FFF6E5', bad: '#D32F2F', badSoft: '#FDECEC' };
+const td = (extra = '') => `dir="rtl" style="text-align:right;font-family:${FONT};${extra}"`;
+const ltr = s => `<span dir="ltr" style="unicode-bidi:isolate">${s}</span>`;
+
+const STATE = {
+  '✓': { c: C.good, bg: C.goodSoft, t: 'انجام شد' },
+  '!': { c: C.warn, bg: C.warnSoft, t: 'هشدار' },
+  '✗': { c: C.bad, bg: C.badSoft, t: 'خطا' },
+  '—': { c: C.mute, bg: C.bg, t: 'غیرفعال' },
+};
+const badge = s => { const x = STATE[s] || STATE['—']; return `<span style="display:inline-block;background:${x.bg};color:${x.c};font-family:${FONT};font-size:12px;font-weight:bold;padding:2px 10px;border-radius:12px;white-space:nowrap">${x.t}</span>`; };
+
+const section = (title, sub = '') => `<tr><td ${td('padding:26px 0 8px')}>
+  <div style="border-right:4px solid ${C.red};padding-right:10px">
+    <div style="font-family:${FONT};font-size:17px;font-weight:bold;color:${C.ink};line-height:1.6">${title}</div>
+    ${sub ? `<div style="font-family:${FONT};font-size:13px;color:${C.mute};line-height:1.6">${sub}</div>` : ''}
+  </div></td></tr>`;
+const card = inner => `<tr><td style="padding:4px 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;border:1px solid ${C.line};border-radius:12px">${inner}</table></td></tr>`;
+const item = (title, sub, value, last) => `<tr>
+  <td ${td(`padding:12px 18px;${last ? '' : `border-bottom:1px solid ${C.line};`}`)}>
+    <div style="font-family:${FONT};font-size:14.5px;font-weight:bold;color:${C.ink};line-height:1.7">${title}</div>
+    ${sub ? `<div style="font-family:${FONT};font-size:12.5px;color:${C.mute};line-height:1.7">${sub}</div>` : ''}</td>
+  <td dir="rtl" style="padding:12px 18px;${last ? '' : `border-bottom:1px solid ${C.line};`}text-align:left;white-space:nowrap;font-family:${FONT};font-size:13px;color:${C.soft}">${value}</td></tr>`;
+const listCard = (rowsArr) => card(rowsArr.map((r, k) => item(r[0], r[1], r[2], k === rowsArr.length - 1)).join(''));
 const meta = x => [TYPE[x.type] || 'سازه', district(x), x.owner].filter(Boolean).map(esc).join(' · ');
+const price = n => n ? `${toman(n)} <span style="color:${C.mute};font-size:12px">تومان</span>` : `<span style="color:${C.mute}">بدون قیمت</span>`;
 
 const today = fa.format(new Date());
-const subject = `بیلبوردسنج | به‌روزرسانی هفتگی ${today}${failed ? ' — با خطا' : warn ? ' — با هشدار' : ''}`;
+const status = failed ? { t: 'بخشی از به‌روزرسانی خطا داد', c: C.bad, bg: C.badSoft } : warn ? { t: 'انجام شد، با هشدار', c: C.warn, bg: C.warnSoft } : { t: 'همه بخش‌ها انجام شد', c: C.good, bg: C.goodSoft };
+const subject = `بیلبوردسنج | به‌روزرسانی هفتگی ${today}${failed ? ' | با خطا' : warn ? ' | با هشدار' : ''}`;
 const deltaN = prev ? now.items.length - prev.items.length : null;
-const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light"><title>${esc(subject)}</title></head>
-<body style="margin:0;padding:0;background:${C.soft}">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.soft}"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:620px;background:#fff;border-radius:14px;border:1px solid ${C.line};font-family:Vazirmatn,Tahoma,'Segoe UI',Arial,sans-serif;direction:rtl;text-align:right">
-<tr><td style="padding:22px 24px 6px">
-  <div style="font-size:12px;color:${C.muted}">بیلبوردسنج · Billboard-Master</div>
-  <h1 style="font-size:20px;margin:4px 0 2px;color:${C.ink}">به‌روزرسانی هفتگی ${today}</h1>
-  <div style="font-size:13px;color:${failed ? C.bad : warn ? C.warn : C.good};font-weight:700">${failed ? 'بخشی از به‌روزرسانی خطا داد' : warn ? 'انجام شد، با هشدار' : 'همه بخش‌ها انجام شد'}</div>
+const kpi = (label, value, sub) => `<td width="33%" valign="top" style="padding:0 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg};border-radius:10px"><tr><td ${td('padding:12px 14px')}>
+  <div style="font-family:${FONT};font-size:12px;color:${C.mute}">${label}</div>
+  <div style="font-family:${FONT};font-size:20px;font-weight:800;color:${C.ink};line-height:1.6">${value}</div>
+  ${sub ? `<div style="font-family:${FONT};font-size:12px;color:${C.mute}">${sub}</div>` : '<div style="font-size:12px">&nbsp;</div>'}</td></tr></table></td>`;
+
+const topMoves = [...moves.slice(0, 5), ...moves.slice(-5)].filter((m, k, a) => a.indexOf(m) === k);
+const rowsHTML = [
+  section('وضعیت اجرا', 'هر بخش جدا اجرا می‌شود؛ اگر یکی خطا بدهد بقیه با داده هفته قبل ادامه می‌دهند'),
+  card(rows.map(([st, title, desc], k) => `<tr>
+    <td ${td(`padding:12px 18px;${k === rows.length - 1 ? '' : `border-bottom:1px solid ${C.line};`}`)}>
+      <div style="font-family:${FONT};font-size:14.5px;font-weight:bold;color:${C.ink};line-height:1.7">${title}</div>
+      <div style="font-family:${FONT};font-size:13px;color:${C.soft};line-height:1.8">${esc(desc)}</div></td>
+    <td valign="top" style="padding:14px 18px;${k === rows.length - 1 ? '' : `border-bottom:1px solid ${C.line};`}text-align:left">${badge(st)}</td></tr>`).join('')),
+  alerts.length ? `<tr><td style="padding:10px 0 0"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.warnSoft};border-radius:10px"><tr><td ${td(`padding:12px 16px;border-right:3px solid ${C.warn};font-size:13.5px;line-height:1.9;color:${C.ink}`)}>${alerts.map(esc).join('<br>')}</td></tr></table></td></tr>` : '',
+  added.length ? section(`سازه‌های جدید`, `${num(added.length)} سازه به فهرست بازار اضافه شد${added.length > 10 ? '؛ 10 مورد اول' : ''}`) + listCard(added.slice(0, 10).map(x => [esc(x.name), meta(x), price(x.price)])) : '',
+  removed.length ? section(`حذف‌شده از بازار`, `${num(removed.length)} سازه دیگر در فهرست نیست${removed.length > 10 ? '؛ 10 مورد اول' : ''}`) + listCard(removed.slice(0, 10).map(x => [esc(x.name), meta(x), price(x.price)])) : '',
+  moves.length ? section('تغییر قیمت', `قیمت ${num(moves.length)} سازه عوض شد؛ بیشترین افزایش و کاهش`) + listCard(topMoves.map(m => [esc(m.x.name), meta(m.x),
+    `${toman(m.from)} ← ${toman(m.x.price)}<br><b style="color:${m.d > 0 ? C.bad : C.good};font-size:13.5px">${ltr(pct(m.d))}</b>`])) : '',
+].join('');
+
+const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light only"><meta name="supported-color-schemes" content="light">
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700;800&display=swap" rel="stylesheet">
+<title>${esc(subject)}</title></head>
+<body style="margin:0;padding:0;background:${C.bg}">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${C.bg}"><tr><td align="center" style="padding:20px 10px">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px">
+
+<tr><td style="background:#ffffff;border-radius:12px 12px 0 0;border-bottom:3px solid ${C.red}">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
+    <td ${td(`padding:16px 22px;font-size:19px;font-weight:800;color:${C.red}`)}>بیلبوردسنج</td>
+    <td dir="ltr" style="padding:16px 22px;text-align:left;font-family:${FONT};font-size:12.5px;color:${C.mute}">Billboard-Master · Weekly update</td>
+  </tr></table>
 </td></tr>
-<tr><td style="padding:10px 24px">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="6"><tr>
-    ${kpi('سازه‌ها', num(now.items.length), deltaN == null ? '' : deltaN === 0 ? 'بدون تغییر' : `${deltaN > 0 ? '+' : ''}${num(deltaN)} نسبت به هفته قبل`)}
-    ${kpi('میانه اجاره ماهانه', toman(medNow) + ' تومان', medPrev && medNow ? `${pct(medNow / medPrev - 1)} نسبت به هفته قبل` : '')}
+
+<tr><td ${td('background:#ffffff;padding:20px 22px 22px;border-radius:0 0 12px 12px')}>
+  <div style="font-family:${FONT};font-size:22px;font-weight:800;color:${C.ink};line-height:1.5">به‌روزرسانی هفتگی ${today}</div>
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:10px"><tr>
+    <td style="background:${status.bg};border-radius:8px;padding:7px 14px;font-family:${FONT};font-size:13px;font-weight:bold;color:${status.c}">${status.t}</td>
+  </tr></table>
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px"><tr>
+    ${kpi('سازه‌های تهران', num(now.items.length), deltaN == null ? '' : deltaN === 0 ? 'بدون تغییر نسبت به هفته قبل' : `${ltr((deltaN > 0 ? '+' : '') + num(deltaN))} نسبت به هفته قبل`)}
+    ${kpi('میانه اجاره ماهانه', `${toman(medNow)}`, medPrev && medNow ? `${ltr(pct(medNow / medPrev - 1))} نسبت به هفته قبل` : 'تومان')}
     ${kpi('داده ترافیک نشان', `${num(covered)} سازه`, run?.refreshed ? `${num(run.refreshed)} نقطه این هفته` : '')}
   </tr></table>
 </td></tr>
-<tr><td style="padding:4px 24px 8px">
-  <h3 style="font-size:15px;margin:14px 0 8px;color:${C.ink}">وضعیت اجرا</h3>
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-  ${rows.map(([s, t, d]) => `<tr><td style="padding:8px 0 8px 10px;border-bottom:1px solid ${C.line};width:26px;vertical-align:top">${mark(s)}</td><td style="padding:8px 0;border-bottom:1px solid ${C.line}"><div style="font-size:13.5px;font-weight:700;color:${C.ink}">${t}</div><div style="font-size:12.5px;color:${C.muted};line-height:1.7">${esc(d)}</div></td></tr>`).join('')}
-  </table>
-  ${alerts.length ? `<div style="margin-top:14px;padding:10px 12px;border-radius:10px;background:#FFF8E6;border:1px solid #F3DFA8;font-size:13px;color:#6B4E00;line-height:1.8">${alerts.map(esc).join('<br>')}</div>` : ''}
-  ${list(`سازه‌های جدید (${num(added.length)})`, added.slice(0, 10), x => line(`${esc(x.name)}<div style="font-size:12px;color:${C.muted}">${meta(x)}</div>`, x.price ? toman(x.price) + ' تومان' : 'بدون قیمت'), added.length - 10)}
-  ${list(`حذف‌شده از بازار (${num(removed.length)})`, removed.slice(0, 10), x => line(`${esc(x.name)}<div style="font-size:12px;color:${C.muted}">${meta(x)}</div>`, x.price ? toman(x.price) + ' تومان' : ''), removed.length - 10)}
-  ${list(`تغییر قیمت (${num(moves.length)} سازه)`, [...moves.slice(0, 5), ...moves.slice(-5).filter(m => !moves.slice(0, 5).includes(m))].filter((m, i, a) => a.indexOf(m) === i),
-    m => line(`${esc(m.x.name)}<div style="font-size:12px;color:${C.muted}">${meta(m.x)}</div>`, `${toman(m.from)} ← ${toman(m.x.price)} <b style="color:${m.d > 0 ? C.bad : C.good}">${pct(m.d)}</b>`), 0)}
+
+<tr><td><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${rowsHTML}</table></td></tr>
+
+<tr><td align="center" style="padding:26px 0 8px">
+  <table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="background:${C.red};border-radius:10px">
+    <a href="${SITE}" style="display:inline-block;padding:12px 28px;font-family:${FONT};font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none">باز کردن بیلبوردسنج</a>
+  </td></tr></table>
+  ${RUN ? `<div style="margin-top:12px;font-family:${FONT};font-size:12.5px"><a href="${RUN}" style="color:${C.mute}">جزئیات این اجرا در گیت‌هاب</a></div>` : ''}
 </td></tr>
-<tr><td style="padding:16px 24px 24px">
-  <a href="${SITE}" style="display:inline-block;background:${C.accent};color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:10px 18px;border-radius:10px">باز کردن بیلبوردسنج</a>
-  ${RUN ? `<a href="${RUN}" style="display:inline-block;margin-right:10px;color:${C.accent};font-size:13px;text-decoration:none">جزئیات اجرا در گیت‌هاب</a>` : ''}
-  <div style="font-size:11.5px;color:${C.muted};margin-top:14px;line-height:1.7">قیمت‌ها از آگهی‌های عمومی اجاره بیلبورد (مجموعه‌داده Rasamap) هستند${scraped ? `؛ آخرین برداشت منبع ${fa.format(new Date(scraped))}` : ''}. این ایمیل هر هفته بعد از به‌روزرسانی خودکار فرستاده می‌شود.</div>
-</td></tr>
+<tr><td ${td(`padding:14px 0 6px;text-align:center;font-size:11.5px;line-height:1.8;color:${C.mute}`)}>قیمت‌ها از آگهی‌های عمومی اجاره بیلبورد (مجموعه‌داده Rasamap) هستند${scraped ? `؛ آخرین برداشت منبع ${fa.format(new Date(scraped))}` : ''}. ترافیک از API نشان و مدل ترافیک تهران. این ایمیل هر هفته بعد از به‌روزرسانی خودکار فرستاده می‌شود.</td></tr>
+
 </table></td></tr></table></body></html>`;
 
 mkdirSync('.cache', { recursive: true });
