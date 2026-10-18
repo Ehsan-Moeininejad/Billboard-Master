@@ -9,6 +9,7 @@ import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market
 import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
 import { createHotspots } from './hotlayer.js';
+import { createAssistant } from './assistant.js';
 import * as net from './net.js';
 const { roadsNear, structuresIn, highwayNetwork } = net;
 import * as providers from './providers.js';
@@ -25,7 +26,7 @@ const $ = s => document.querySelector(s);
 const icon = (id, cls = '') => `<svg class="${cls}"><use href="#i-${id}"/></svg>`;
 const isMobile = () => matchMedia('(max-width: 860px)').matches;
 
-let map, baseLayer, hwLayer = null, searchMarker = null, hot = null;
+let map, baseLayer, hwLayer = null, searchMarker = null, hot = null, assistant = null;
 const siteLayers = new Map();
 const structCache = { tiles: new Set(), items: new Map() };
 
@@ -79,8 +80,18 @@ async function init() {
       focusStructure,
       districtOf: (lat, lng) => state.districts && !state.districtsApprox ? districtOf(lat, lng, state.districts) : null,
       ensureDistricts: () => loadDistricts(),
+      openAssistant: o => { closePops(); assistant?.open(o); },
     });
-  } else $('#btnHot').hidden = true;
+    assistant = createAssistant({
+      $, icon, toast, copyText, hot, focusStructure,
+      structures: () => allStructures().filter(st => st.source !== 'osm'),
+      structInfo: st => { const r = rankById.get(st.id), pe = state.plan.entries?.find(x => x.id === st.id); return { score: pe?.score ?? r?.score ?? null, valueIdx: pe?.valueIdx ?? null, imp: pe?.ev?.dailyImp ?? r?.imp ?? null }; },
+      districtOf: (lat, lng) => state.districts ? districtOf(lat, lng, state.districts) : null,
+      ensureScores: () => evaluateMarket(),
+    });
+    $('#btnAssist').addEventListener('click', () => { closePops(); assistant.toggle(); });
+    $('#btnAssist2').addEventListener('click', e => { e.stopPropagation(); closePops(); assistant.toggle(); });
+  } else { $('#btnHot').hidden = true; $('#btnAssist').hidden = true; $('#btnAssist2').hidden = true; }
   subscribe(() => { drawAllSites(); renderPanel(); updateDataChip(); });
   drawAllSites();
   renderPanel();
@@ -2606,9 +2617,11 @@ function openHelp() {
     <h3>6. هات‌اسپات‌ها</h3>
     <p>هات‌اسپات‌ها جاهایی‌اند که مردم جمع می‌شوند: مال و بازار، راسته خرید، بورس‌های تخصصی کالا (موبایل، طلا، لوستر، پوشاک و…)، قطب‌های رستوران و کافه، مراکز سرگرمی، ایستگاه‌های مترو و پایانه‌ها، و دانشگاه‌ها. نقاط از OpenStreetMap خوانده و تجمع‌های پرتراکم با جست‌وجوی چگالی پیدا می‌شوند.</p>
     <ul>
-      <li><b>شکل</b>: فقط هسته پرتراکم هر تجمع نگه داشته می‌شود. برای راسته‌ها، بورس‌ها و رستوران‌ها، جایی جزو شکل است که دست‌کم 3 تا 4 مغازه در 60 تا 70 متری‌اش باشد و تراکمش دست‌کم 35٪ تراکم شلوغ‌ترین نقطه همان تجمع باشد. شکل هیچ‌وقت بیش از 300 تا 350 متر از شلوغ‌ترین نقطه فاصله نمی‌گیرد. حریم مال‌ها 60 متر و حریم ایستگاه‌های مترو 150 متر (تقاطعی 220 متر) است. اگر هسته‌ها از هم جدا باشند، هر کدام یک چندضلعی جدا می‌شود و مغازه‌های پراکنده بیرون می‌مانند. تعداد مغازه‌ها و تراکم فقط از داخل همین شکل شمرده می‌شود.</li>
+      <li><b>شکل و اندازه</b>: برای راسته‌ها، بورس‌ها، رستوران‌ها، مراکز اداری و درمانی، شکل از جایی کشیده می‌شود که مغازه‌ها و مراکز به هم نزدیک‌ترند. با دکمه «اندازه هات‌اسپات‌ها» تعیین می‌کنید شکل چند درصد آن‌ها را دربر بگیرد: هسته 50٪، متعادل 70٪ (پیش‌فرض)، گسترده 85٪ یا کامل 95٪. برای مال، مترو، هایپرمارکت، پارک، ورزشگاه و دانشگاه همین دکمه حریم اطراف را کوچک و بزرگ می‌کند. اگر تجمع تکه‌تکه باشد، هر تکه یک چندضلعی جدا می‌شود.</li>
       <li><b>پتانسیل</b> 0 تا 100 = وزن نوع مکان × (45٪ جایگاه اندازه در بین هم‌نوع‌ها + 55٪ اندازه نسبت به یک هات‌اسپات قوی) + امتیاز هم‌پوشانی با انواع دیگر. 75 به بالا «خیلی زیاد»، 55 به بالا «زیاد».</li>
       <li><b>خروجی مختصات</b>: هر هات‌اسپات را می‌توان به‌صورت چندضلعی (رئوس lat,lng؛ برای چند بخش، چند چندضلعی)، GeoJSON، WKT یا مرکز و شعاعِ دایره‌ای که کل محدوده را می‌پوشاند کپی کرد، یا همه هات‌اسپات‌های فیلترشده را CSV، GeoJSON و KML گرفت؛ برای جئوفنس تبلیغات موبایل و پلتفرم‌های نقشه.</li>
+      <li><b>دسته‌ها</b>: مال و بازار، راسته خرید، 14 بورس تخصصی (موبایل، لوازم خانگی، پوشاک، طلا، آرایشی، کودک، ورزش، کتاب، ساز، خانه، ابزار، خودرو، دارو، حیوانات خانگی)، رستوران و کافه، سرگرمی، مترو و پایانه، دانشگاه، هایپرمارکت، مرکز اداری و تجاری، مراکز درمانی، پارک و ورزشگاه.</li>
+      <li><b>دستیار کمپین</b>: بنویسید چه چیزی، با چه بودجه‌ای، چند ماه و کجا تبلیغ می‌کنید. انتخاب سازه‌ها همیشه با موتور خود سایت است: هر سازه بر اساس نزدیکی به هات‌اسپات‌های آن دسته کالا (داخل محدوده، تا 250 متر و مسیر رسیدن تا 900 متر، وزن‌دار با پتانسیل) و امتیاز ترافیکی‌اش رتبه می‌گیرد و تا سقف بودجه انتخاب می‌شود. متن پیشنهاد و ایده‌های طراحی را یک مدل رایگان می‌نویسد (با کلید رایگان OpenRouter، Gemini یا Groq، وگرنه Pollinations) و اگر هیچ مدلی در دسترس نباشد، موتور داخلی سایت متن را می‌نویسد.</li>
       <li><b>انتخاب و اشتراک</b>: با تیک کنار هر هات‌اسپات چند تا را انتخاب کنید، فقط همان‌ها را روی نقشه نگه دارید، مختصاتشان را یک‌جا کپی کنید یا لینکش را برای همکار بفرستید. دکمه‌های «برای تبلیغ چه چیزی؟» نوع‌های مناسب هر دسته کالا را یک‌جا انتخاب می‌کنند. پاپ‌آپ هر هات‌اسپات سازه‌های داخل محدوده و سازه‌های مسیر رسیدن (تا 900 متر) را با امتیاز و قیمت نشان می‌دهد؛ «اوج حضور» الگوی معمول هر نوع مکان است، نه داده اندازه‌گیری‌شده.</li>
       <li>کامل بودن داده به ثبت مغازه‌ها در OpenStreetMap بستگی دارد؛ بعضی راسته‌ها کمتر از واقع دیده می‌شوند.</li>
     </ul>

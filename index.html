@@ -60,6 +60,7 @@
       <button class="search-clear" id="searchClear" aria-label="پاک کردن" hidden><svg><use href="#i-close"/></svg></button>
       <div class="search-results" id="searchResults" role="listbox" hidden></div>
     </div>
+    <button class="guide-btn assist-btn" id="btnAssist" aria-label="دستیار کمپین"><svg><use href="#i-spark"/></svg><span>دستیار کمپین</span></button>
     <button class="guide-btn" id="btnGuide" aria-label="راهنمای شروع"><svg><use href="#i-info"/></svg><span>راهنما</span></button>
     <button class="data-chip model" id="dataChip" aria-label="منبع داده"><i></i><span><b>فقط مدل</b><small>کلید API ندارد</small></span></button>
   </div>
@@ -69,6 +70,7 @@
     <div class="tool-group">
       <button class="tool" id="btnLayers" aria-label="لایه‌ها" data-tip="لایه‌ها"><svg><use href="#i-layers"/></svg></button>
       <button class="tool" id="btnHot" aria-label="هات‌اسپات‌های تجمع مردم" data-tip="هات‌اسپات‌ها: مال، راسته خرید، بورس کالا، رستوران‌ها…"><svg><use href="#i-flame"/></svg></button>
+      <button class="tool tool-assist" id="btnAssist2" aria-label="دستیار کمپین"><svg><use href="#i-spark"/></svg></button>
       <button class="tool" id="btnSettings" aria-label="تنظیمات و اتصال داده" data-tip="تنظیمات و داده"><svg><use href="#i-settings"/></svg><span class="tool-dot" id="dataDot"></span></button>
       <button class="tool" id="btnHelp" aria-label="روش محاسبه" data-tip="روش محاسبه و محدودیت‌ها"><svg><use href="#i-info"/></svg></button>
     </div>
@@ -103,6 +105,8 @@
   <dialog id="dlgImport" class="dlg dlg-wide"></dialog>
   <dialog id="dlgCopy" class="dlg"></dialog>
   <dialog id="dlgWelcome" class="dlg dlg-wide dlg-welcome"></dialog>
+
+  <aside class="assistant" id="assistant" hidden aria-label="دستیار کمپین"></aside>
 
   <div class="toasts" id="toasts" aria-live="assertive"></div>
 

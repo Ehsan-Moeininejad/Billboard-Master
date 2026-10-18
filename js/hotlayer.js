@@ -1,11 +1,11 @@
 // Hotspot layer: shapes (one or several polygons) for places where people gather (malls, shopping streets, trade streets,
 // restaurant clusters, entertainment, metro/terminals, campuses), a filter panel and popups that
 // list the billboard structures inside or next to each hotspot.
-import { HOTSPOT_TYPES, TYPE_BY_KEY, BOURSE, HOTSPOT_QUERY, LEVEL_FA, buildHotspots, hotspotTitle, unpackRing, distToShape } from './hotspots.js';
+import { HOTSPOT_TYPES, TYPE_BY_KEY, BOURSE, HOTSPOT_QUERY, LEVEL_FA, COVERAGE, COVERAGE_FA, buildHotspots, hotspotTitle, unpackRing, distToShape } from './hotspots.js';
 import { OVERPASS_ENDPOINTS } from './config.js';
 
 const PREF_KEY = 'billboard-insight:hotspots:v1';
-const CACHE_KEY = 'billboard-insight:hotspots-cache:v3';
+const CACHE_KEY = 'billboard-insight:hotspots-cache:v4';
 const CACHE_DAYS = 8;
 const KX = 111320 * Math.cos(35.7 * Math.PI / 180), KY = 110540;
 const dm = (a, b) => Math.hypot((a.lat - b.lat) * KY, (a.lng - b.lng) * KX);
@@ -18,16 +18,32 @@ const PEAK_FA = {
   fun: 'عصر و شب؛ اوج آخر هفته',
   transit: 'روزهای کاری؛ اوج 7 تا 9 صبح و 16 تا 19',
   campus: 'روزهای کاری در ترم؛ کم‌رونق در تابستان',
+  hyper: 'عصرها و آخر هفته؛ خرید هفتگی خانواده',
+  office: 'روزهای کاری 8 تا 17؛ خلوت در آخر هفته',
+  health: 'روزهای کاری، صبح تا عصر',
+  park: 'عصرها و کل روز آخر هفته؛ اوج بهار و تابستان',
+  sport: 'عصر و شب؛ اوج روزهای مسابقه',
 };
 // quick starting points by what is being advertised (category → hotspot types)
-const PRESETS = [
-  { k: 'digital', fa: 'موبایل و دیجیتال', types: ['mall', 'bourse', 'retail'], subs: ['elec'] },
-  { k: 'fashion', fa: 'مد، پوشاک و زیبایی', types: ['mall', 'retail', 'bourse'], subs: ['fashion', 'gold'] },
-  { k: 'home', fa: 'خانه و لوازم خانگی', types: ['mall', 'bourse'], subs: ['home', 'build'] },
-  { k: 'food', fa: 'خوراکی و سوپرمارکت', types: ['food', 'mall'], subs: [] },
+// (Digikala's main categories plus two audience-based sets)
+export const PRESETS = [
+  { k: 'digital', fa: 'موبایل و دیجیتال', types: ['mall', 'bourse', 'retail', 'office', 'campus'], subs: ['elec'] },
+  { k: 'appliance', fa: 'لوازم خانگی برقی', types: ['mall', 'bourse', 'hyper'], subs: ['appliance', 'home'] },
+  { k: 'home', fa: 'خانه و آشپزخانه', types: ['mall', 'bourse', 'hyper'], subs: ['home', 'build'] },
+  { k: 'fashion', fa: 'مد و پوشاک', types: ['mall', 'retail', 'bourse'], subs: ['fashion', 'gold'] },
+  { k: 'beauty', fa: 'آرایشی، بهداشتی و سلامت', types: ['mall', 'retail', 'bourse', 'hyper', 'health'], subs: ['beauty', 'medical'] },
+  { k: 'fmcg', fa: 'سوپرمارکت و خوراکی', types: ['hyper', 'food', 'mall'], subs: [] },
+  { k: 'kids', fa: 'مادر و کودک', types: ['mall', 'park', 'bourse'], subs: ['kids'] },
+  { k: 'sport', fa: 'ورزش و سفر', types: ['sport', 'park', 'bourse'], subs: ['sport'] },
+  { k: 'books', fa: 'کتاب، لوازم‌التحریر و هنر', types: ['campus', 'bourse', 'fun'], subs: ['books', 'music'] },
+  { k: 'tools', fa: 'ابزار و تجهیزات صنعتی', types: ['bourse'], subs: ['build', 'auto'] },
+  { k: 'auto', fa: 'خودرو و موتورسیکلت', types: ['bourse'], subs: ['auto'] },
+  { k: 'pet', fa: 'حیوانات خانگی', types: ['bourse', 'park'], subs: ['pet'] },
   { k: 'youth', fa: 'جوانان و دانشجوها', types: ['campus', 'fun', 'food', 'transit'], subs: [] },
-  { k: 'reach', fa: 'بیشترین رفت‌وآمد', types: ['transit', 'mall', 'retail'], subs: [] },
+  { k: 'b2b', fa: 'شاغلان و خرید سازمانی', types: ['office', 'transit', 'food'], subs: [] },
+  { k: 'reach', fa: 'بیشترین رفت‌وآمد', types: ['transit', 'mall', 'retail', 'hyper'], subs: [] },
 ];
+const inPreset = (p, h) => p.types.includes(h.t) && (h.t !== 'bourse' || !p.subs.length || p.subs.includes(h.sub));
 const SUB_FA = { metro: 'ایستگاه مترو', rail: 'راه‌آهن', terminal: 'پایانه اتوبوس', mall: 'مرکز خرید', bazaar: 'بازار' };
 
 const store = {
@@ -46,7 +62,13 @@ export function hotspotRing(h, n = 32) {
   pts.push(pts[0]);
   return pts;
 }
-const ringsOf = h => h.rings || (h.rings = h.poly?.length ? h.poly.map(unpackRing) : [hotspotRing(h)]);
+// shapes are stored per coverage level (h.cov[50|70|85|95].p); COV is the level being shown
+let COV = 70;
+const ringsOf = h => {
+  const cache = (h._rings ||= {});
+  if (!cache[COV]) { const p = h.cov?.[COV]?.p || h.cov?.[70]?.p || h.poly; cache[COV] = p?.length ? p.map(unpackRing) : [hotspotRing(h)]; }
+  return cache[COV];
+};
 const wktRing = r => `(${r.map(([a, b]) => `${b} ${a}`).join(', ')})`;
 const wkt = h => { const R = ringsOf(h); return R.length === 1 ? `POLYGON(${wktRing(R[0])})` : `MULTIPOLYGON(${R.map(r => `(${wktRing(r)})`).join(', ')})`; };
 const lngLat = r => r.map(([a, b]) => [b, a]);
@@ -75,7 +97,15 @@ function download(name, text, type) {
 export function createHotspots(ctx) {
   // ctx: { map, $, icon, esc, toast, structures(), structInfo(st), focusStructure(id), districts(), districtOf(lat,lng) }
   const { map, $, icon, esc } = ctx;
-  const pref = Object.assign({ on: false, types: HOTSPOT_TYPES.map(t => t.k), subs: Object.keys(BOURSE), min: 2, sel: [], only: false }, store.get(PREF_KEY) || {});
+  const pref = Object.assign({ on: false, types: HOTSPOT_TYPES.map(t => t.k), subs: Object.keys(BOURSE), min: 2, sel: [], only: false, cov: 70 }, store.get(PREF_KEY) || {});
+  // types and trade-street groups added after a viewer saved their filters start switched on
+  const knownT = pref.knownT || ['mall', 'retail', 'food', 'bourse', 'fun', 'transit', 'campus'];
+  const knownS = pref.knownS || ['elec', 'fashion', 'gold', 'home', 'auto', 'build', 'books', 'medical'];
+  HOTSPOT_TYPES.forEach(t => { if (!knownT.includes(t.k) && !pref.types.includes(t.k)) pref.types.push(t.k); });
+  Object.keys(BOURSE).forEach(k => { if (!knownS.includes(k) && !pref.subs.includes(k)) pref.subs.push(k); });
+  pref.knownT = HOTSPOT_TYPES.map(t => t.k); pref.knownS = Object.keys(BOURSE);
+  if (!COVERAGE.includes(pref.cov)) pref.cov = 70;
+  COV = pref.cov;
   let query = '';
   const H = { items: null, status: 'idle', source: '', updatedAt: '', layer: null, renderer: null, byId: new Map() };
   const savePref = () => store.set(PREF_KEY, pref);
@@ -110,10 +140,21 @@ export function createHotspots(ctx) {
   function set(items, source, updatedAt) {
     H.items = items; H.source = source; H.updatedAt = updatedAt || ''; H.status = 'ready';
     H.byId = new Map(items.map(h => [h.id, h]));
-    items.forEach(h => { h.title = hotspotTitle(h); h.dist = ctx.districtOf?.(h.lat, h.lng) ?? null; ringsOf(h); });
+    items.forEach(h => { h.title = hotspotTitle(h); h.dist = ctx.districtOf?.(h.lat, h.lng) ?? null; h.base = { r: h.r, area: h.area, n: h.n }; });
+    applyCov();
     // district numbers for the labels; districts load only once hotspots are actually used
     ctx.ensureDistricts?.().then(() => { items.forEach(h => { h.dist = ctx.districtOf?.(h.lat, h.lng) ?? h.dist; }); renderPop(); }).catch(() => {});
     draw(); renderPop();
+  }
+  // switch every hotspot's shape, area, cover radius and count to the chosen coverage level
+  function applyCov() {
+    COV = pref.cov;
+    (H.items || []).forEach(h => {
+      const lv = h.cov?.[COV] || h.cov?.[70];
+      h.r = lv?.r ?? h.base.r; h.area = lv?.a ?? h.base.area; h.n = lv?.n ?? h.base.n;
+      h.dens = h.area ? +(h.n / Math.max(0.05, h.area)).toFixed(2) : h.dens;
+      ringsOf(h);
+    });
   }
   async function overpass(q) {
     let last;
@@ -234,12 +275,16 @@ export function createHotspots(ctx) {
       <label class="switch-row hs-main"><input type="checkbox" data-hs="on" ${pref.on ? 'checked' : ''}><span class="switch"></span><span><b>هات‌اسپات‌های تجمع مردم</b><small>جاهایی که مردم جمع می‌شوند و پتانسیل تبلیغات دارند</small></span></label>
       ${status}
       <div class="pop-title">برای تبلیغ چه چیزی؟</div>
-      <div class="hs-presets">${PRESETS.map(p => `<button class="${presetOn(p) ? 'on' : ''}" data-hs="preset" data-k="${p.k}">${p.fa}</button>`).join('')}</div>
+      <select class="inp hs-preset-sel" data-hs="preset-sel"><option value="">همه دسته‌ها (انتخاب دستی نوع‌ها)</option>${PRESETS.map(p => `<option value="${p.k}" ${presetOn(p) ? 'selected' : ''}>${p.fa}</option>`).join('')}</select>
+      ${(() => { const p = PRESETS.find(presetOn); return p && ctx.openAssistant ? `<button class="hs-camp" data-hs="camp" data-k="${p.k}">${icon('spark')} پیشنهاد بیلبورد و محل برای کمپین «${p.fa}»</button>` : ''; })()}
       <div class="pop-title">نوع هات‌اسپات</div>
       <div class="hs-types">${HOTSPOT_TYPES.map(t => `<button class="hs-type ${pref.types.includes(t.k) ? 'on' : ''}" data-hs="type" data-k="${t.k}" style="--c:${t.color}" title="${esc(t.desc)}"><i></i>${t.short}${H.items ? `<small>${c[t.k] || 0}</small>` : ''}</button>`).join('')}</div>
       ${pref.types.includes('bourse') ? `<div class="hs-subs">${Object.entries(BOURSE).map(([k, b]) => `<button class="${pref.subs.includes(k) ? 'on' : ''}" data-hs="sub" data-k="${k}">${b.fa}${H.items ? ` <small>${c['b:' + k] || 0}</small>` : ''}</button>`).join('')}</div>` : ''}
       <div class="pop-title">حداقل پتانسیل</div>
       <div class="seg hs-seg">${[[1, 'همه'], [2, 'زیاد به بالا'], [3, 'فقط خیلی زیاد']].map(([v, l]) => `<button class="${pref.min === v ? 'on' : ''}" data-hs="min" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="pop-title">اندازه هات‌اسپات‌ها</div>
+      <div class="seg hs-seg hs-cov">${COVERAGE.map(c => `<button class="${pref.cov === c ? 'on' : ''}" data-hs="cov" data-v="${c}" title="${c === 50 ? 'فقط شلوغ‌ترین هسته' : c === 95 ? 'تقریباً همه مغازه‌ها و مراکز آن تجمع' : ''}">${COVERAGE_FA[c]} <small>${c}٪</small></button>`).join('')}</div>
+      <div class="hs-cov-note">درصد = سهم مغازه‌ها و مراکز هر تجمع که داخل شکل قرار می‌گیرد؛ برای مال، مترو، پارک و… حریم اطراف را کوچک و بزرگ می‌کند.</div>
       <div class="pop-title hs-list-title">بیشترین پتانسیل در محدوده نقشه</div>
       <input class="inp hs-q" data-hs="q" type="search" placeholder="جستجوی هات‌اسپات (مثلاً جمهوری، تیراژه)" value="${esc(query)}" autocomplete="off">
       <div class="hs-list" id="hsList"></div>
@@ -303,6 +348,8 @@ export function createHotspots(ctx) {
     else if (a === 'focus') { const h = H.byId.get(b.dataset.id); if (h) focus(h); return; }
     else if (a === 'retry') { H.status = 'idle'; setOn(true); return; }
     else if (a === 'exp') { exportAll(b.dataset.f); return; }
+    else if (a === 'cov') { pref.cov = +b.dataset.v; savePref(); applyCov(); draw(); renderPop(); return; }
+    else if (a === 'camp') { ctx.openAssistant?.({ preset: b.dataset.k }); return; }
     else if (a === 'preset') {
       const p = PRESETS.find(x => x.k === b.dataset.k); if (!p) return;
       pref.types = [...p.types]; if (p.subs.length) pref.subs = [...p.subs]; else pref.subs = Object.keys(BOURSE);
@@ -352,7 +399,14 @@ export function createHotspots(ctx) {
   // wiring
   $('#hotPop').addEventListener('click', e => { e.stopPropagation(); onPopClick(e); });
   $('#hotPop').addEventListener('input', e => { if (e.target.matches('[data-hs="q"]')) { query = e.target.value; renderList(); } });
-  $('#hotPop').addEventListener('change', e => { if (e.target.matches('[data-hs="on"]')) setOn(e.target.checked); });
+  $('#hotPop').addEventListener('change', e => {
+    if (e.target.matches('[data-hs="preset-sel"]')) {
+      const p = PRESETS.find(x => x.k === e.target.value);
+      if (p) { pref.types = [...p.types]; pref.subs = p.subs.length ? [...p.subs] : Object.keys(BOURSE); }
+      else { pref.types = HOTSPOT_TYPES.map(t => t.k); pref.subs = Object.keys(BOURSE); }
+      savePref(); if (!pref.on) setOn(true); else { draw(); renderPop(); }
+      return;
+    } if (e.target.matches('[data-hs="on"]')) setOn(e.target.checked); });
   $('#lyrHot')?.addEventListener('change', e => setOn(e.target.checked));
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act="hs-struct"]'); if (!b) return;
@@ -389,6 +443,15 @@ export function createHotspots(ctx) {
       return best;
     },
     open(id) { const h = H.byId.get(id); if (h) focus(h); },
+    // for the campaign assistant
+    async ready() { if (!H.items) await load(); return H.items || []; },
+    rings: ringsOf,
+    peak: t => PEAK_FA[t] || '',
+    showOnly(list) {
+      pref.sel = list.map(skey); pref.only = true; savePref();
+      return setOn(true).then(() => { if (list.length) map.fitBounds(L.latLngBounds(list.flatMap(ringsOf).flat()).pad(0.25), { maxZoom: 16, paddingBottomRight: matchMedia('(max-width: 860px)').matches ? [10, Math.round(innerHeight * 0.45)] : [420, 20] }); });
+    },
+    focus(h) { focus(h); },
     refreshDistricts() { (H.items || []).forEach(h => { h.dist = ctx.districtOf?.(h.lat, h.lng) ?? h.dist; }); },
     get on() { return pref.on; },
   };

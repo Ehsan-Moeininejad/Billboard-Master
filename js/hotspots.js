@@ -3,8 +3,8 @@
 // metro/terminals and campuses. Built from OpenStreetMap points of interest:
 //   1) every POI is classified into a hotspot type (and a sub-type for trade streets);
 //   2) dense POI groups are found with a greedy density-peak search (mean-shift refined);
-//   3) each hotspot's radius is the 75th-percentile distance of its POIs from the peak, so a tight
-//      cluster gets a small circle and a spread-out street a larger one;
+//   3) each hotspot gets a traced shape at four coverage levels (COVERAGE: share of its POIs the shape takes in),
+//      so the map can show just the dense core or the wider area;
 //   4) potential (0–100) mixes size, concentration and how much foot traffic the type usually brings.
 // Used at deploy time (scripts/build-roads.mjs → data/hotspots.json) and as a live fallback in the browser.
 
@@ -16,6 +16,11 @@ export const HOTSPOT_TYPES = [
   { k: 'fun',     fa: 'سرگرمی و فرهنگی',     short: 'سرگرمی',      color: '#B48CFF', w: 0.78, desc: 'سینما، تئاتر، فرهنگسرا و مراکز تفریحی' },
   { k: 'transit', fa: 'مترو و پایانه',       short: 'مترو و پایانه', color: '#3DDCC8', w: 0.90, desc: 'ایستگاه‌های مترو، راه‌آهن و پایانه‌های اتوبوس' },
   { k: 'campus',  fa: 'دانشگاه',             short: 'دانشگاه',     color: '#A8D86E', w: 0.62, desc: 'پردیس‌های دانشگاهی؛ مخاطب جوان' },
+  { k: 'hyper',   fa: 'هایپرمارکت و فروشگاه زنجیره‌ای', short: 'هایپرمارکت', color: '#FFD24A', w: 0.85, desc: 'هایپراستار، رفاه، شهروند، افق کوروش و سوپرمارکت‌های بزرگ؛ خرید خانواده' },
+  { k: 'office',  fa: 'مرکز اداری و تجاری',  short: 'اداری و تجاری', color: '#7C9CFF', w: 0.80, desc: 'تجمع شرکت‌ها، ادارات و بانک‌ها؛ شاغلان و تصمیم‌گیرندگان خرید سازمانی' },
+  { k: 'health',  fa: 'مراکز درمانی',        short: 'درمانی',      color: '#C9D4E8', w: 0.70, desc: 'بیمارستان‌ها و تجمع درمانگاه و مطب؛ بیمار و همراه، رفت‌وآمد روزانه' },
+  { k: 'park',    fa: 'پارک و تفریحگاه',     short: 'پارک',        color: '#4CC26B', w: 0.72, desc: 'پارک‌های بزرگ شهری؛ خانواده‌ها، عصرها و آخر هفته' },
+  { k: 'sport',   fa: 'ورزشگاه و مجموعه ورزشی', short: 'ورزشی',   color: '#E36BFF', w: 0.70, desc: 'ورزشگاه‌ها و مجموعه‌های ورزشی بزرگ' },
 ];
 export const TYPE_BY_KEY = Object.fromEntries(HOTSPOT_TYPES.map(t => [t.k, t]));
 
@@ -24,7 +29,13 @@ export const BOURSE = {
   elec:    { fa: 'موبایل و الکترونیک', shops: ['mobile_phone', 'computer', 'electronics', 'hifi', 'camera', 'video_games', 'telecommunication'], min: 6 },
   fashion: { fa: 'پوشاک و کفش',        shops: ['clothes', 'shoes', 'boutique', 'fashion_accessories', 'bag', 'fabric', 'tailor', 'leather', 'sewing'], min: 8 },
   gold:    { fa: 'طلا و جواهر',        shops: ['jewelry', 'watches', 'gold_buyer'], min: 6 },
-  home:    { fa: 'لوازم خانه و روشنایی', shops: ['furniture', 'lighting', 'houseware', 'interior_decoration', 'carpet', 'kitchen', 'bed', 'curtain', 'appliance', 'electrical', 'bathroom_furnishing', 'tiles', 'flooring'], min: 7 },
+  home:    { fa: 'خانه، مبلمان و روشنایی', shops: ['furniture', 'lighting', 'houseware', 'interior_decoration', 'carpet', 'kitchen', 'bed', 'curtain', 'bathroom_furnishing', 'tiles', 'flooring'], min: 7 },
+  appliance: { fa: 'لوازم خانگی برقی',  shops: ['appliance', 'electrical', 'vacuum_cleaner'], min: 6 },
+  beauty:  { fa: 'آرایشی و عطر',       shops: ['cosmetics', 'perfumery', 'hairdresser_supply'], min: 6 },
+  sport:   { fa: 'ورزش و سفر',         shops: ['sports', 'outdoor', 'bicycle', 'fishing', 'hunting', 'scuba_diving', 'golf'], min: 6 },
+  kids:    { fa: 'کودک و اسباب‌بازی',   shops: ['toys', 'baby_goods', 'games', 'model'], min: 5 },
+  music:   { fa: 'ساز و موسیقی',       shops: ['musical_instrument', 'music', 'video'], min: 5 },
+  pet:     { fa: 'حیوانات خانگی',      shops: ['pet', 'pet_grooming'], min: 5 },
   auto:    { fa: 'خودرو و قطعات',      shops: ['car_parts', 'car', 'tyres', 'motorcycle', 'car_repair', 'motorcycle_repair'], min: 12 },
   build:   { fa: 'ابزار و مصالح',      shops: ['hardware', 'doityourself', 'paint', 'trade', 'wholesale', 'glaziery'], min: 7 },
   books:   { fa: 'کتاب و لوازم‌التحریر', shops: ['books', 'stationery', 'copyshop', 'art'], min: 6 },
@@ -35,7 +46,7 @@ for (const [k, b] of Object.entries(BOURSE)) b.shops.forEach(s => { SHOP_TO_SUB[
 
 // comparison shopping (what people travel for) — everyday neighbourhood shops are left out on purpose
 const RETAIL = new Set(['clothes', 'shoes', 'boutique', 'fashion_accessories', 'bag', 'jewelry', 'watches', 'cosmetics', 'perfumery',
-  'beauty', 'gift', 'toys', 'sports', 'outdoor', 'mobile_phone', 'electronics', 'computer', 'books', 'optician', 'variety_store',
+  'gift', 'toys', 'sports', 'outdoor', 'mobile_phone', 'electronics', 'computer', 'books', 'optician', 'variety_store',
   'department_store', 'confectionery', 'chocolate', 'nuts', 'coffee', 'tea', 'florist', 'music', 'baby_goods', 'leather', 'fabric', 'houseware', 'lighting']);
 const FOOD = new Set(['restaurant', 'fast_food', 'cafe', 'food_court', 'ice_cream', 'juice_bar']);
 const FUN_AM = new Set(['cinema', 'theatre', 'arts_centre']);
@@ -45,9 +56,17 @@ export const HOTSPOT_BBOX = [35.55, 51.10, 35.85, 51.65];
 export const HOTSPOT_QUERY = (() => {
   const b = HOTSPOT_BBOX.join(',');
   return `[out:json][timeout:180];(nwr["shop"](${b});`
-    + `nwr["amenity"~"^(restaurant|fast_food|cafe|food_court|ice_cream|juice_bar|marketplace|cinema|theatre|arts_centre|pharmacy|university|bus_station)$"](${b});`
-    + `nwr["railway"="station"](${b});nwr["leisure"~"^(amusement_arcade|bowling_alley|water_park|escape_game|trampoline_park|miniature_golf)$"](${b}););out tags bb;`;
+    + `nwr["amenity"~"^(restaurant|fast_food|cafe|food_court|ice_cream|juice_bar|marketplace|cinema|theatre|arts_centre|pharmacy|university|bus_station|hospital|clinic|doctors|dentist|bank)$"](${b});`
+    + `nwr["office"](${b});nwr["railway"="station"](${b});`
+    + `nwr["leisure"~"^(amusement_arcade|bowling_alley|water_park|escape_game|trampoline_park|miniature_golf|park|stadium|sports_centre)$"](${b}););out tags bb;`;
 })();
+
+// how much of each hotspot the shape takes in (share of its POIs for streets; halo size for single places)
+export const COVERAGE = [50, 70, 85, 95];
+export const COVERAGE_FA = { 50: 'هسته', 70: 'متعادل', 85: 'گسترده', 95: 'کامل' };
+const BUF = { 50: 0.6, 70: 1, 85: 1.4, 95: 1.8 };
+const CAPF = { 50: 0.8, 70: 1, 85: 1.25, 95: 1.5 };
+const HYPER_RE = /هایپر|هایپراستار|رفاه|شهروند|کوروش|افق|جانبو|اتکا|سپه|یاس|hyper|refah|carrefour|kourosh/i;
 
 // ── geometry helpers ─────────────────────────────────────────
 const KX = 111320 * Math.cos(35.7 * Math.PI / 180), KY = 110540; // metres per degree around Tehran
@@ -143,12 +162,17 @@ export function roadNamer(roads) {
 // Streets and food clusters keep only their dense core: a cell stays in the shape when at least `abs` POIs (and at least
 // `frac` of the peak) lie within `h` metres of it. `cap` is the farthest a shape may reach from its densest point.
 const SHAPE = {
-  mall:   { b: 60, gap: 40, minPart: 0, cap: 350 },
-  retail: { kde: { h: 60, abs: 4, frac: 0.35 }, b: 15, gap: 30, minPart: 0.1, cap: 350 },
-  bourse: { kde: { h: 60, abs: 3, frac: 0.35 }, b: 15, gap: 30, minPart: 0.1, cap: 300 },
-  food:   { kde: { h: 70, abs: 3, frac: 0.35 }, b: 15, gap: 30, minPart: 0.1, cap: 350 },
+  mall:   { b: 70, gap: 40, minPart: 0, cap: 350 },
+  retail: { kde: { h: 60 }, b: 20, gap: 30, minPart: 0.08, cap: 380 },
+  bourse: { kde: { h: 60 }, b: 20, gap: 30, minPart: 0.08, cap: 320 },
+  food:   { kde: { h: 70 }, b: 20, gap: 30, minPart: 0.08, cap: 380 },
+  office: { kde: { h: 70 }, b: 20, gap: 30, minPart: 0.08, cap: 380 },
+  health: { kde: { h: 70 }, b: 25, gap: 30, minPart: 0.08, cap: 380 },
   fun:    { b: 70, gap: 60, minPart: 0, cap: 300 },
   campus: { b: 30, gap: 40, minPart: 0, cap: 650 },
+  hyper:  { b: 80, gap: 40, minPart: 0, cap: 250 },
+  park:   { b: 30, gap: 40, minPart: 0, cap: 900 },
+  sport:  { b: 60, gap: 40, minPart: 0, cap: 500 },
 };
 const D8 = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]; // clockwise, y down
 
@@ -162,9 +186,14 @@ function samples(p, step) {
 }
 const diskOffsets = rc => { const o = []; for (let dy = -rc; dy <= rc; dy++) for (let dx = -rc; dx <= rc; dx++) if (dx * dx + dy * dy <= rc * rc + rc * 0.6) o.push(dx, dy); return o; };
 
-export function outline(members, { b, gap, minPart, kde = null, cap = Infinity }) {
+export function outline(members, { b: b0, gap, minPart, kde = null, cap: cap0 = Infinity }, cov = 70) {
   if (!members?.length) return null;
-  const pts = members.flatMap((m, mi) => samples(m, Math.max(20, Math.min(60, b * 0.8))).map(([la, ln]) => ({ la, ln, mi })));
+  const b = kde ? b0 : b0 * BUF[cov], cap = cap0 * CAPF[cov];
+  const step = Math.max(20, Math.min(60, b * 0.8));
+  const pts = members.flatMap((m, mi) => samples(m, step).map(([la, ln]) => ({ la, ln, mi })));
+  // a huge footprint is sampled more coarsely than `step`; close those gaps too so a park stays one shape
+  const spread = Math.max(0, ...members.filter(m => m.B).map(m => Math.max((m.B.maxlat - m.B.minlat) * KY, (m.B.maxlon - m.B.minlon) * KX) / 40));
+  if (!kde && spread > gap / 1.3) gap = spread * 1.3;
   const lat0 = pts.reduce((s, p) => s + p.la, 0) / pts.length, lng0 = pts.reduce((s, p) => s + p.ln, 0) / pts.length;
   pts.forEach(p => { p.x = (p.ln - lng0) * KX; p.y = (lat0 - p.la) * KY; }); // y grows southwards (raster order)
   const pad = b + gap + (kde ? kde.h : 0) + 30;
@@ -184,7 +213,12 @@ export function outline(members, { b, gap, minPart, kde = null, cap = Infinity }
     pts.forEach(p => { const x = cx(p), y = cy(p); for (let k = 0; k < kd.length; k += 2) { const X = x + kd[k], Y = y + kd[k + 1]; if (inb(X, Y)) cnt[at(X, Y)]++; } });
     let mx = 0, mi = 0; cnt.forEach((v, i) => { if (v > mx) { mx = v; mi = i; } });
     peak = [mi % W, Math.floor(mi / W)];
-    const thr = Math.max(kde.abs, kde.frac * mx), core = cnt.map(v => (v >= thr ? 1 : 0));
+    // threshold chosen so the shape takes in `cov`% of the POIs (densest first); never below 2 neighbours except at 95%
+    const mv = new Array(members.length).fill(0);
+    pts.forEach(p => { mv[p.mi] = Math.max(mv[p.mi], cnt[at(cx(p), cy(p))]); });
+    mv.sort((a, c) => c - a);
+    const thr = Math.max(cov >= 95 ? 1 : 2, mv[clamp(Math.ceil(cov / 100 * mv.length) - 1, 0, mv.length - 1)]);
+    const core = cnt.map(v => (v >= thr ? 1 : 0));
     stamp(core, g, disk, 1);
   } else {
     pts.forEach(p => { const x = cx(p), y = cy(p); for (let k = 0; k < disk.length; k += 2) { const X = x + disk[k], Y = y + disk[k + 1]; if (inb(X, Y)) g[at(X, Y)] = 1; } });
@@ -311,7 +345,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 2) shopping streets — comparison retail
   const retail = shopPts.filter(p => RETAIL.has(p.t.shop));
-  peaks(retail, { r0: 100, min: 12, rMax: 320, rMin: 100, grow: 60 }).forEach(c => {
+  peaks(retail, { r0: 100, min: 12, rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'retail', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
       mix: topKinds(c.members, p => SHOP_FA[p.t.shop]) });
@@ -320,7 +354,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
   // 3) trade streets per category
   for (const [k, b] of Object.entries(BOURSE)) {
     const pts = pois.filter(p => (p.t.shop && SHOP_TO_SUB[p.t.shop] === k) || (b.amenity && b.amenity.includes(p.t.amenity)));
-    peaks(pts, { r0: 100, min: b.min, rMax: 280, rMin: 90, grow: 60 }).forEach(c => {
+    peaks(pts, { r0: 100, min: b.min, rMax: 320, rMin: 90, grow: 70 }).forEach(c => {
       const st = modeOf(c.members.map(p => p.street));
       push({ _m: c.members, t: 'bourse', sub: k, place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n / (b.min / 6),
         mix: topKinds(c.members, p => SHOP_FA[p.t.shop] || (p.t.amenity === 'pharmacy' ? 'داروخانه' : '')) });
@@ -329,7 +363,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 4) food clusters
   const food = pois.filter(p => FOOD.has(p.t.amenity));
-  peaks(food, { r0: 120, min: 8, rMax: 320, rMin: 100, grow: 70 }).forEach(c => {
+  peaks(food, { r0: 120, min: 8, rMax: 380, rMin: 100, grow: 80 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'food', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
       mix: topKinds(c.members, p => ({ restaurant: 'رستوران', fast_food: 'فست‌فود', cafe: 'کافه', food_court: 'فودکورت', ice_cream: 'بستنی', juice_bar: 'آبمیوه' })[p.t.amenity]) });
@@ -367,21 +401,72 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
     push({ _m: c.members, t: 'campus', name: big[0].name, lat: c.lat, lng: c.lng, r, n: c.members.length, ha: +ha.toFixed(1), size: 1 + ha / 5 });
   });
 
-  // shape of each hotspot: the area its POIs actually cover, split into several parts when the cluster is patchy
+  // 8) hypermarkets and big supermarkets (≥ 0.4 ha, or a chain store with its own building) — each is its own hotspot
+  const hyper = pois.filter(p => p.t.shop === 'supermarket' && (p.ha >= 0.4 || (HYPER_RE.test(p.name) && p.ha >= 0.05) || /هایپر|hyper/i.test(p.name)));
+  peaks(hyper, { r0: 150, min: 1, rMax: 150, rMin: 0, weight: p => 1 + Math.min(6, p.ha * 8) }).forEach(c => {
+    const big = [...c.members].sort((a, b) => b.ha - a.ha || (HYPER_RE.test(b.name) ? 1 : 0) - (HYPER_RE.test(a.name) ? 1 : 0));
+    const ha = c.members.reduce((s, p) => s + p.ha, 0), chain = c.members.some(p => HYPER_RE.test(p.name));
+    push({ _m: c.members, t: 'hyper', name: big.find(p => p.name)?.name || 'فروشگاه بزرگ', lat: c.lat, lng: c.lng, r: 120, n: c.members.length, ha: +ha.toFixed(1), size: 3 + ha * 10 + (chain ? 3 : 0) });
+  });
+
+  // 9) office and business districts — companies, agencies and banks
+  const office = pois.filter(p => p.t.office || p.t.amenity === 'bank');
+  peaks(office, { r0: 120, min: 15, rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
+    const st = modeOf(c.members.map(p => p.street));
+    push({ _m: c.members, t: 'office', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
+      mix: topKinds(c.members, p => p.t.amenity === 'bank' ? 'بانک' : OFFICE_FA[p.t.office] || 'شرکت و اداره') });
+  });
+
+  // 10) hospitals and clinic clusters (a hospital counts as 8 clinics)
+  const health = pois.filter(p => ['hospital', 'clinic', 'doctors', 'dentist'].includes(p.t.amenity));
+  peaks(health, { r0: 150, min: 10, rMax: 380, rMin: 120, grow: 80, weight: p => (p.t.amenity === 'hospital' ? 8 : 1) }).forEach(c => {
+    const hosp = c.members.filter(p => p.t.amenity === 'hospital' && p.name).sort((a, b) => b.ha - a.ha);
+    const st = modeOf(c.members.map(p => p.street));
+    push({ _m: c.members, t: 'health', name: hosp[0] ? (hosp.length > 1 ? `${hosp[0].name} و ${hosp.length - 1} بیمارستان دیگر` : hosp[0].name) : '', place: streetLabel(st) || roadName(c),
+      lat: c.lat, lng: c.lng, r: c.r, n: c.members.length, size: c.n, top: hosp.slice(0, 4).map(p => p.name),
+      mix: topKinds(c.members, p => ({ hospital: 'بیمارستان', clinic: 'درمانگاه', doctors: 'مطب', dentist: 'دندانپزشکی' })[p.t.amenity]) });
+  });
+
+  // 11) large parks (≥ 10 ha)
+  const parks = pois.filter(p => p.t.leisure === 'park' && p.ha >= 10 && p.name);
+  peaks(parks, { r0: 200, min: 1, rMax: 200, rMin: 0, weight: p => 1 + p.ha / 5 }).forEach(c => {
+    const big = [...c.members].sort((a, b) => b.ha - a.ha), ha = c.members.reduce((s, p) => s + p.ha, 0);
+    push({ _m: c.members, t: 'park', name: big[0].name, lat: c.lat, lng: c.lng, r: 300, n: c.members.length, ha: +ha.toFixed(1), size: ha });
+  });
+
+  // 12) stadiums and big sports complexes (≥ 1.5 ha)
+  const sport = pois.filter(p => (p.t.leisure === 'stadium' || (p.t.leisure === 'sports_centre' && p.ha >= 1.5)) && (p.name || p.ha >= 3));
+  peaks(sport, { r0: 250, min: 1, rMax: 250, rMin: 0, weight: p => 1 + p.ha / 3 }).forEach(c => {
+    const big = [...c.members].sort((a, b) => (b.t.leisure === 'stadium') - (a.t.leisure === 'stadium') || b.ha - a.ha), ha = c.members.reduce((s, p) => s + p.ha, 0);
+    push({ _m: c.members, t: 'sport', name: big.find(p => p.name)?.name || 'مجموعه ورزشی', lat: c.lat, lng: c.lng, r: 250, n: c.members.length, ha: +ha.toFixed(1), size: 1 + ha / 2 });
+  });
+
+  // shape of each hotspot at every coverage level: the area its POIs actually cover, split into parts when patchy.
+  // The 70% level is the default view and also sets the centre, counts and density used for the potential score.
   out.forEach(h => {
-    const S = SHAPE[h.t];
-    const o = outline(h._m, h.t === 'transit' ? { b: h.r, gap: 0, minPart: 0 } : S);
+    const S = h.t === 'transit' ? { b: h.r, gap: 0, minPart: 0 } : SHAPE[h.t];
+    const lv = {};
+    for (const c of COVERAGE) {
+      const o = outline(h._m, S, c);
+      if (o) lv[c] = { p: o.parts.map(packRing), a: o.area, r: Math.round(o.r), n: S.kde ? o.inside : null, lat: o.lat, lng: o.lng };
+    }
     delete h._m;
+    const o = lv[70];
     if (!o) { h.drop = true; return; }
-    Object.assign(h, { lat: o.lat, lng: o.lng, r: o.r, area: o.area, poly: o.parts.map(packRing) });
-    // count only what is inside the (now tighter) shape; a cluster with no real core is dropped
-    if (S?.kde) { const k = h.t === 'bourse' ? BOURSE[h.sub].min / 6 : 1; h.n = o.inside; h.size = o.inside / k; if (o.inside < 6) h.drop = true; }
+    Object.assign(h, { lat: o.lat, lng: o.lng, r: o.r, area: o.a }); // shapes live in h.cov[level].p
+    COVERAGE.forEach(c => { if (lv[c]) { delete lv[c].lat; delete lv[c].lng; if (lv[c].n == null) delete lv[c].n; } });
+    h.cov = lv;
+    if (S.kde) {
+      const k = h.t === 'bourse' ? BOURSE[h.sub].min / 6 : 1;
+      if (h.t !== 'health') { h.n = o.n; h.size = o.n / k; }
+      if (o.n < 6) h.drop = true; // no real core
+    }
   });
   for (let i = out.length - 1; i >= 0; i--) if (out[i].drop) out.splice(i, 1);
 
   // potential score: half "how big within its type" (percentile), half absolute size vs a typical strong hotspot,
   // scaled by how much foot traffic the type brings; a little bonus for overlapping other hotspot types
-  const REF = { mall: 120, retail: 60, food: 45, bourse: 30, fun: 5, transit: 4, campus: 12 };
+  const REF = { mall: 120, retail: 60, food: 45, bourse: 30, fun: 5, transit: 4, campus: 12, hyper: 12, office: 60, health: 40, park: 40, sport: 10 };
   const byType = {};
   out.forEach(h => (byType[h.t] ||= []).push(h.size));
   out.forEach(h => {
@@ -406,6 +491,7 @@ function topKinds(members, label) {
   return [...m].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([l, n]) => `${l} ${n}`);
 }
 
+const OFFICE_FA = { company: 'شرکت', government: 'دولتی', insurance: 'بیمه', it: 'فناوری', estate_agent: 'املاک', lawyer: 'وکالت', accountant: 'حسابداری', travel_agent: 'گردشگری', telecommunication: 'مخابرات', financial: 'مالی', ngo: 'سازمان' };
 const SHOP_FA = {
   clothes: 'پوشاک', shoes: 'کفش', boutique: 'بوتیک', fashion_accessories: 'اکسسوری', bag: 'کیف', jewelry: 'طلا و جواهر', watches: 'ساعت',
   cosmetics: 'آرایشی', perfumery: 'عطر', beauty: 'زیبایی', gift: 'هدیه', toys: 'اسباب‌بازی', sports: 'ورزشی', outdoor: 'کوهنوردی',
@@ -417,7 +503,9 @@ const SHOP_FA = {
   electrical: 'برق', bathroom_furnishing: 'شیرآلات', tiles: 'کاشی', flooring: 'کفپوش', car_parts: 'لوازم یدکی', car: 'نمایشگاه خودرو', tyres: 'لاستیک',
   motorcycle: 'موتورسیکلت', car_repair: 'تعمیرگاه', motorcycle_repair: 'تعمیر موتور', hardware: 'ابزار', doityourself: 'ابزار', paint: 'رنگ',
   trade: 'مصالح', wholesale: 'عمده‌فروشی', glaziery: 'شیشه', stationery: 'لوازم‌التحریر', copyshop: 'تکثیر', art: 'هنری', chemist: 'بهداشتی',
-  medical_supply: 'تجهیزات پزشکی', hearing_aids: 'سمعک', gold_buyer: 'طلا',
+  medical_supply: 'تجهیزات پزشکی', hearing_aids: 'سمعک', gold_buyer: 'طلا', musical_instrument: 'ساز', bicycle: 'دوچرخه', fishing: 'ماهیگیری',
+  hunting: 'شکار', scuba_diving: 'غواصی', golf: 'گلف', games: 'بازی', model: 'ماکت', pet: 'پت‌شاپ', pet_grooming: 'آرایش حیوانات',
+  hairdresser_supply: 'لوازم آرایشگاهی', vacuum_cleaner: 'جاروبرقی', video: 'فیلم',
 };
 
 // display name of a hotspot
@@ -426,6 +514,8 @@ export function hotspotTitle(h) {
   if (h.t === 'bourse') return `بورس ${BOURSE[h.sub]?.fa || ''}${h.place ? ' · ' + h.place : ''}`;
   if (h.t === 'retail') return `راسته خرید${h.place ? ' · ' + h.place : ''}`;
   if (h.t === 'food') return `رستوران و کافه${h.place ? ' · ' + h.place : ''}`;
+  if (h.t === 'office') return `مرکز اداری و تجاری${h.place ? ' · ' + h.place : ''}`;
+  if (h.t === 'health' && !h.name) return `مراکز درمانی${h.place ? ' · ' + h.place : ''}`;
   if (h.name) return h.name;
   return `${T?.short || ''}${h.place ? ' · ' + h.place : ''}`;
 }
