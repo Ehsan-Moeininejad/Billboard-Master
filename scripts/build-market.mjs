@@ -52,7 +52,8 @@ function loadRoads() {
     }
     return [...byName].map(([name, v]) => ({ name, lines: v.lines, cls: v.cls }));
   }
-  if (!IS_TEHRAN) { console.log(`${DIR}/roads.json missing; ${SLUG} is skipped until its roads are built.`); process.exit(0); }
+  // without its road file a city still gets every listing whose own coordinates fall inside the city
+  if (!IS_TEHRAN) { console.log(`${DIR}/roads.json missing; ${SLUG}: listings are placed by their own coordinates only.`); return []; }
   if (existsSync('data/ref-roads.json')) {
     const osm = JSON.parse(readFileSync('data/ref-roads.json', 'utf8'));
     const byName = new Map();

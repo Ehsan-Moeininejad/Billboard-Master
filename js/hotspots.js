@@ -317,8 +317,32 @@ export function distToShape(rings, pt) {
 export const ringAreaHa = ring => { let s = 0; for (let i = 0; i < ring.length - 1; i++) s += (ring[i][1] * KX) * (ring[i + 1][0] * KY) - (ring[i + 1][1] * KX) * (ring[i][0] * KY); return Math.abs(s) / 2 / 1e4; };
 
 // ── build ────────────────────────────────────────────────────
-export function buildHotspots(osm, { roadName = () => '' } = {}) {
+// How tightly shops and restaurants cluster in Tehran: 90th percentile of neighbours within 120 m (shops) and 150 m
+// (food). Other cities' OpenStreetMap data is sparser, so their thresholds are scaled by their own figure ÷ these.
+const TEHRAN_P90 = { retail: 14, food: 9 };
+function clusterP90(pts, r) {
+  if (pts.length < 20) return 0;
+  const idx = gridIndex(pts, r);
+  const cnt = pts.map(p => idx.near(p, r).length).sort((a, b) => a - b);
+  return cnt[Math.floor(0.9 * (cnt.length - 1))];
+}
+
+/**
+ * @param osm      Overpass result (HOTSPOT_QUERY)
+ * @param opts     roadName(c) → nearest road name; relative: true for cities other than Tehran, so that «dense» is
+ *                 judged against the city's own clustering (Tehran is built without it, exactly as before)
+ */
+export function buildHotspots(osm, { roadName = () => '', relative = false } = {}) {
   const pois = (osm.elements || []).map(poiOf).filter(Boolean);
+  // scale factors (1 in Tehran): sR for shops and trade streets, sF for food, sA for offices and clinics
+  let sR = 1, sF = 1;
+  if (relative) {
+    const shopsR = pois.filter(p => p.t.shop && RETAIL.has(p.t.shop)), foodR = pois.filter(p => FOOD.has(p.t.amenity));
+    sR = clamp(clusterP90(shopsR, 120) / TEHRAN_P90.retail, 0.3, 1) || 0.3;
+    sF = clamp(clusterP90(foodR, 150) / TEHRAN_P90.food, 0.3, 1) || 0.3;
+  }
+  const sA = (sR + sF) / 2;
+  const atLeast = (v, s, lo) => Math.max(lo, Math.round(v * s));
   const out = [];
   const push = (h) => out.push(h);
 
@@ -345,7 +369,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 2) shopping streets — comparison retail
   const retail = shopPts.filter(p => RETAIL.has(p.t.shop));
-  peaks(retail, { r0: 100, min: 12, rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
+  peaks(retail, { r0: 100, min: atLeast(12, sR, 4), rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'retail', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
       mix: topKinds(c.members, p => SHOP_FA[p.t.shop]) });
@@ -354,7 +378,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
   // 3) trade streets per category
   for (const [k, b] of Object.entries(BOURSE)) {
     const pts = pois.filter(p => (p.t.shop && SHOP_TO_SUB[p.t.shop] === k) || (b.amenity && b.amenity.includes(p.t.amenity)));
-    peaks(pts, { r0: 100, min: b.min, rMax: 320, rMin: 90, grow: 70 }).forEach(c => {
+    peaks(pts, { r0: 100, min: atLeast(b.min, sR, 3), rMax: 320, rMin: 90, grow: 70 }).forEach(c => {
       const st = modeOf(c.members.map(p => p.street));
       push({ _m: c.members, t: 'bourse', sub: k, place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n / (b.min / 6),
         mix: topKinds(c.members, p => SHOP_FA[p.t.shop] || (p.t.amenity === 'pharmacy' ? 'داروخانه' : '')) });
@@ -363,7 +387,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 4) food clusters
   const food = pois.filter(p => FOOD.has(p.t.amenity));
-  peaks(food, { r0: 120, min: 8, rMax: 380, rMin: 100, grow: 80 }).forEach(c => {
+  peaks(food, { r0: 120, min: atLeast(8, sF, 4), rMax: 380, rMin: 100, grow: 80 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'food', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
       mix: topKinds(c.members, p => ({ restaurant: 'رستوران', fast_food: 'فست‌فود', cafe: 'کافه', food_court: 'فودکورت', ice_cream: 'بستنی', juice_bar: 'آبمیوه' })[p.t.amenity]) });
@@ -411,7 +435,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 9) office and business districts — companies, agencies and banks
   const office = pois.filter(p => p.t.office || p.t.amenity === 'bank');
-  peaks(office, { r0: 120, min: 15, rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
+  peaks(office, { r0: 120, min: atLeast(15, sA, 5), rMax: 380, rMin: 100, grow: 70 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'office', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
       mix: topKinds(c.members, p => p.t.amenity === 'bank' ? 'بانک' : OFFICE_FA[p.t.office] || 'شرکت و اداره') });
@@ -419,7 +443,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
 
   // 10) hospitals and clinic clusters (a hospital counts as 8 clinics)
   const health = pois.filter(p => ['hospital', 'clinic', 'doctors', 'dentist'].includes(p.t.amenity));
-  peaks(health, { r0: 150, min: 10, rMax: 380, rMin: 120, grow: 80, weight: p => (p.t.amenity === 'hospital' ? 8 : 1) }).forEach(c => {
+  peaks(health, { r0: 150, min: atLeast(10, sA, 5), rMax: 380, rMin: 120, grow: 80, weight: p => (p.t.amenity === 'hospital' ? 8 : 1) }).forEach(c => {
     const hosp = c.members.filter(p => p.t.amenity === 'hospital' && p.name).sort((a, b) => b.ha - a.ha);
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'health', name: hosp[0] ? (hosp.length > 1 ? `${hosp[0].name} و ${hosp.length - 1} بیمارستان دیگر` : hosp[0].name) : '', place: streetLabel(st) || roadName(c),
@@ -459,14 +483,15 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
     if (S.kde) {
       const k = h.t === 'bourse' ? BOURSE[h.sub].min / 6 : 1;
       if (h.t !== 'health') { h.n = o.n; h.size = o.n / k; }
-      if (o.n < 6) h.drop = true; // no real core
+      if (o.n < atLeast(6, h.t === 'food' ? sF : h.t === 'office' || h.t === 'health' ? sA : sR, 3)) h.drop = true; // no real core
     }
   });
   for (let i = out.length - 1; i >= 0; i--) if (out[i].drop) out.splice(i, 1);
 
   // potential score: half "how big within its type" (percentile), half absolute size vs a typical strong hotspot,
   // scaled by how much foot traffic the type brings; a little bonus for overlapping other hotspot types
-  const REF = { mall: 120, retail: 60, food: 45, bourse: 30, fun: 5, transit: 4, campus: 12, hyper: 12, office: 60, health: 40, park: 40, sport: 10 };
+  // a «strong» hotspot of each type; outside Tehran measured against the city's own density
+  const REF = { mall: 120 * Math.max(sR, 0.5), retail: 60 * sR, food: 45 * sF, bourse: 30 * sR, fun: 5, transit: 4, campus: 12, hyper: 12, office: 60 * sA, health: 40 * sA, park: 40, sport: 10 };
   const byType = {};
   out.forEach(h => (byType[h.t] ||= []).push(h.size));
   out.forEach(h => {
@@ -483,6 +508,7 @@ export function buildHotspots(osm, { roadName = () => '' } = {}) {
   for (let i = out.length - 1; i >= 0; i--) if (out[i].score < 25) out.splice(i, 1);
   out.forEach((h, i) => { h.lat = +h.lat.toFixed(5); h.lng = +h.lng.toFixed(5); h.r = Math.round(h.r); h.n = Math.round(h.n); delete h.size; h.id = `h${i}`; });
   out.sort((a, b) => b.score - a.score);
+  if (relative) out.scale = { retail: +sR.toFixed(2), food: +sF.toFixed(2) };
   return out;
 }
 

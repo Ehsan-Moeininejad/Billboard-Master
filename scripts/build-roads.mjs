@@ -22,9 +22,11 @@ const result = { city: SLUG, roads: null, districts: null, hotspots: null };
 const same = (file, key, value) => { if (IS_TEHRAN || !existsSync(file)) return false; try { return JSON.stringify(JSON.parse(readFileSync(file, 'utf8'))[key]) === JSON.stringify(value); } catch { return false; } };
 const CLASSES = ['motorway', 'trunk', 'primary', 'secondary', 'motorway_link', 'trunk_link'];
 
-async function overpass(q, tries = 2) {
+// public Overpass servers often refuse for a minute when busy; other cities wait and retry harder (Tehran as before)
+async function overpass(q, tries = IS_TEHRAN ? 2 : 4) {
   let last;
   for (let t = 0; t < tries; t++) for (const url of OVERPASS_ENDPOINTS) {
+    if (t > 0 && !IS_TEHRAN && url === OVERPASS_ENDPOINTS[0]) await new Promise(r => setTimeout(r, 20000 * t));
     try {
       const r = await fetch(url, {
         method: 'POST',
@@ -78,7 +80,8 @@ if (CITY.districts) try {
 
 try {
   const osm = await overpassTiled(b => HOTSPOT_QUERY.replaceAll(HOTSPOT_BBOX.join(','), b.join(',')), IS_TEHRAN ? HOTSPOT_BBOX : CITY.box);
-  const items = buildHotspots(osm, { roadName: roadNamer(plainRoads) });
+  const items = buildHotspots(osm, { roadName: roadNamer(plainRoads), relative: !IS_TEHRAN });
+  if (items.scale) console.log('density scale vs Tehran:', JSON.stringify(items.scale));
   if (items.length < (IS_TEHRAN ? 100 : 15)) throw new Error(`only ${items.length} hotspots`);
   if (!same(`${DIR}/hotspots.json`, 'items', items)) writeFileSync(`${DIR}/hotspots.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
   console.log(`hotspots: ${items.length}`); result.hotspots = items.length;

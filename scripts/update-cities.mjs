@@ -28,30 +28,45 @@ const heavy = ALL ? [...OTHER_CITIES] : [...OTHER_CITIES]
   .sort((a, b) => (state[a]?.roadsAt || '').localeCompare(state[b]?.roadsAt || ''))
   .slice(0, PER_WEEK);
 
+// roads, districts, hotspots for one city; true when the roads came through
+async function buildHeavy(slug, r, st) {
+  try {
+    run(['scripts/build-roads.mjs', `--city=${slug}`], 30);
+    const b = readJSON(`.cache/build-${slug}.json`, {});
+    r.steps.roads = b.roads ? 'ok' : 'kept'; r.steps.districts = b.districts ? 'ok' : (CITIES[slug].districts ? 'kept' : 'none'); r.steps.hotspots = b.hotspots ? 'ok' : 'kept';
+    r.hotspots = b.hotspots ?? r.hotspots ?? null;
+    if (b.roads) st.roadsAt = new Date().toISOString();
+    if (b.hotspots) st.hotspotsAt = new Date().toISOString();
+    await sleep(15000); // be gentle with the public Overpass servers
+    if (b.roads && b.hotspots) r.errors = r.errors.filter(x => x !== 'معابر و هات‌اسپات‌ها');
+    return !!(b.roads && b.hotspots);
+  } catch (e) { r.errors.push('معابر و هات‌اسپات‌ها'); console.warn(slug, 'build-roads', e.message); await sleep(15000); return false; }
+}
+
+const retry = [];
 for (const slug of OTHER_CITIES) {
   const dir = cityDir(slug), r = (report.cities[slug] = { fa: CITIES[slug].fa, steps: {}, errors: [] });
   const st = (state[slug] ||= {});
   mkdirSync(dir, { recursive: true });
   // 1) roads, districts, hotspots (rotating)
-  if (heavy.includes(slug)) {
-    try {
-      run(['scripts/build-roads.mjs', `--city=${slug}`], 25);
-      const b = readJSON(`.cache/build-${slug}.json`, {});
-      r.steps.roads = b.roads ? 'ok' : 'kept'; r.steps.districts = b.districts ? 'ok' : (CITIES[slug].districts ? 'kept' : 'none'); r.steps.hotspots = b.hotspots ? 'ok' : 'kept';
-      r.hotspots = b.hotspots ?? null;
-      if (b.roads) st.roadsAt = new Date().toISOString();
-    } catch (e) { r.errors.push('معابر و هات‌اسپات‌ها'); console.warn(slug, 'build-roads', e.message); }
-    await sleep(15000); // be gentle with the public Overpass servers
-  }
-  // 2) structures and prices (every week)
-  if (existsSync(`${dir}/roads.json`)) {
-    try {
-      run(['scripts/build-market.mjs', ...(LISTINGS ? [LISTINGS] : []), `--city=${slug}`], 10);
-      r.steps.market = 'ok'; st.marketAt = new Date().toISOString();
-    } catch (e) { r.errors.push('فهرست سازه‌ها'); console.warn(slug, 'build-market', e.message); }
-  } else r.steps.market = 'waiting'; // first build of its roads has not happened yet
-  // 3) Neshan traffic for the cities in this week's rotation
-  if (heavy.includes(slug) && process.env.NESHAN_KEY && existsSync(`${dir}/market.json`) && existsSync(`${dir}/roads.json`)) {
+  if (heavy.includes(slug) && !(await buildHeavy(slug, r, st))) retry.push(slug);
+}
+// a busy Overpass server often answers a few minutes later: one more try for cities that did not come through
+if (retry.length) {
+  await sleep(60000);
+  for (const slug of retry) if (!(await buildHeavy(slug, report.cities[slug], state[slug])) && !report.cities[slug].errors.length) report.cities[slug].errors.push('OpenStreetMap جواب نداد؛ داده قبلی ماند');
+}
+
+for (const slug of OTHER_CITIES) {
+  const dir = cityDir(slug), r = report.cities[slug], st = state[slug];
+  // 2) structures and prices (every week; without a road file listings are placed by their own coordinates)
+  try {
+    run(['scripts/build-market.mjs', ...(LISTINGS ? [LISTINGS] : []), `--city=${slug}`], 10);
+    r.steps.market = 'ok'; st.marketAt = new Date().toISOString();
+  } catch (e) { r.errors.push('فهرست سازه‌ها'); console.warn(slug, 'build-market', e.message); }
+  // 3) Neshan traffic for the cities in this week's rotation (not again within 6 days, so a re-run costs no quota)
+  const fresh = st.trafficAt && Date.now() - new Date(st.trafficAt).getTime() < 6 * 864e5;
+  if (heavy.includes(slug) && !fresh && process.env.NESHAN_KEY && existsSync(`${dir}/market.json`) && existsSync(`${dir}/roads.json`)) {
     try {
       run(['scripts/update-traffic.mjs', `--city=${slug}`], 30);
       const t = readJSON(`.cache/traffic-run-${slug}.json`, {});
@@ -70,7 +85,7 @@ const manifest = { updatedAt: new Date().toISOString(), cities: {} };
 for (const slug of OTHER_CITIES) {
   const dir = cityDir(slug), m = readJSON(`${dir}/market.json`), h = readJSON(`${dir}/hotspots.json`), d = readJSON(`${dir}/districts.json`);
   manifest.cities[slug] = {
-    fa: CITIES[slug].fa, ready: !!(m?.items && existsSync(`${dir}/roads.json`)), count: m?.items?.length || 0,
+    fa: CITIES[slug].fa, ready: !!m?.items?.length, count: m?.items?.length || 0,
     hotspots: h?.items?.length || 0, districts: Array.isArray(d) ? d.length : 0, limited: !!CITIES[slug].limited,
     roadsAt: state[slug]?.roadsAt || null, marketAt: state[slug]?.marketAt || null, trafficAt: state[slug]?.trafficAt || null,
   };
