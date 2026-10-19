@@ -1,0 +1,93 @@
+{
+ "updatedAt": "2026-10-19T08:22:49.952Z",
+ "cities": {
+  "karaj": {
+   "fa": "کرج",
+   "ready": true,
+   "count": 147,
+   "hotspots": 103,
+   "districts": 10,
+   "limited": false,
+   "roadsAt": "2026-10-19T08:14:25.021Z",
+   "marketAt": "2026-10-19T08:14:40.123Z",
+   "trafficAt": "2026-10-19T08:17:56.237Z"
+  },
+  "isfahan": {
+   "fa": "اصفهان",
+   "ready": true,
+   "count": 64,
+   "hotspots": 230,
+   "districts": 15,
+   "limited": false,
+   "roadsAt": "2026-10-19T08:19:57.285Z",
+   "marketAt": "2026-10-19T08:20:12.385Z",
+   "trafficAt": "2026-10-19T08:22:49.952Z"
+  },
+  "mashhad": {
+   "fa": "مشهد",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": false,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  },
+  "shiraz": {
+   "fa": "شیراز",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": false,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  },
+  "kerman": {
+   "fa": "کرمان",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": true,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  },
+  "yazd": {
+   "fa": "یزد",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": false,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  },
+  "sari": {
+   "fa": "ساری",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": true,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  },
+  "gorgan": {
+   "fa": "گرگان",
+   "ready": false,
+   "count": 0,
+   "hotspots": 0,
+   "districts": 0,
+   "limited": true,
+   "roadsAt": null,
+   "marketAt": null,
+   "trafficAt": null
+  }
+ }
+}
