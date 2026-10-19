@@ -5,10 +5,17 @@ name: Weekly data update
 # (data/price-sources.json), a fresh site deploy, and a summary email (secrets SMTP_USER, SMTP_PASS, MAIL_TO).
 # GitHub's own schedule is a backup; the reliable trigger is cron-job.org calling workflow_dispatch
 # (see SETUP.md).
+# Other cities (Karaj, Isfahan, Mashhad, …) run in their own step after Tehran is committed, so they can never
+# hold Tehran back: structures and prices every week, roads/hotspots/Neshan for two cities a week (scripts/update-cities.mjs).
 on:
   schedule:
     - cron: '37 23 * * 4'   # Friday 03:07 Tehran
   workflow_dispatch:
+    inputs:
+      all_cities:
+        description: 'Build roads, hotspots and traffic for every city now (first setup)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -74,6 +81,20 @@ jobs:
           git add data/traffic.json data/traffic-history.csv 2>/dev/null || true
           git diff --cached --quiet || git commit -m "data: weekly snapshot $(date -u +%F)"
           git push
+      - name: Other cities (after Tehran, separate commit)
+        id: cities
+        continue-on-error: true
+        timeout-minutes: 150
+        env:
+          NESHAN_KEY: ${{ secrets.NESHAN_KEY }}
+          NESHAN_CITY_CALLS: ${{ vars.NESHAN_CITY_CALLS || '250' }}
+          CITIES_PER_WEEK: ${{ vars.CITIES_PER_WEEK || '2' }}
+          CITIES_ALL: ${{ github.event.inputs.all_cities || 'false' }}
+        run: |
+          node scripts/update-cities.mjs .cache/rs/flagged.json
+          git add data/cities data/cities.json data/cities-state.json
+          git diff --cached --quiet || git commit -m "data: other cities $(date -u +%F)"
+          git push
       - name: Redeploy site
         id: deploy
         env:
@@ -87,6 +108,7 @@ jobs:
           TRAFFIC_OUTCOME: ${{ steps.traffic.outcome }}
           PRICES_OUTCOME: ${{ steps.prices.outcome }}
           COMMIT_OUTCOME: ${{ steps.commit.outcome == 'success' && steps.deploy.outcome || 'failure' }}
+          CITIES_OUTCOME: ${{ steps.cities.outcome }}
           PAGE_URL: ${{ vars.PAGE_URL }}
         run: node scripts/weekly-report.mjs
       - name: Email the report
