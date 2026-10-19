@@ -6,8 +6,9 @@
 //   owner     = scenario × (1 − owner discount)
 //   campaign  = owner × billable weeks × 7/30            billable = max(campaign weeks, owner/bundle minimum)
 import { parseNum } from './fmt.js';
+import { cityKey } from './city.js';
 
-const KEY = 'billboard-insight:pricing:v2';
+const KEY = cityKey('billboard-insight:pricing:v2');
 
 export function defaultPricing() {
   return {

@@ -43,6 +43,7 @@ const covered = traffic?.items ? Object.keys(traffic.items).length : 0;
 
 // ── step status ────────────────────────────────────────────
 const okw = o => !o || o === 'success';
+const cities = read('.cache/cities-run.json');
 const TRAFFIC_TXT = {
   nokey: ['—', 'کلید نشان (NESHAN_KEY) هنوز در ریپو نیست؛ ترافیک با مدل برآورد می‌شود.'],
   noroads: ['!', 'معابر از OpenStreetMap نرسید؛ ترافیک این هفته به‌روز نشد و داده قبلی ماند.'],
@@ -58,6 +59,9 @@ const rows = [
   [okw(env.MARKET_OUTCOME) ? '✓' : '✗', 'فهرست و قیمت بازار', okw(env.MARKET_OUTCOME) ? `${num(now.items.length)} سازه در تهران؛ ${num(now.stats?.ok)} با مختصات منبع، ${num((now.stats?.moved || 0) + (now.stats?.onRoad || 0))} با مکان تقریبی.` : 'ساخت فهرست خطا داد؛ فهرست هفته قبل ماند.'],
   [okw(env.ROADS_OUTCOME) ? '✓' : '!', 'معابر و مناطق (OpenStreetMap)', okw(env.ROADS_OUTCOME) ? 'شبکه معابر و مرز 22 منطقه دوباره ساخته شد.' : 'OpenStreetMap در دسترس نبود؛ بررسی مکان با داده قبلی انجام شد.'],
   [trafficRow[0], 'ترافیک نشان', trafficRow[1]],
+  ...(cities ? [[!okw(env.CITIES_OUTCOME) ? '✗' : Object.values(cities.cities).some(c => c.errors.length) ? '!' : '✓', 'شهرهای دیگر',
+    !okw(env.CITIES_OUTCOME) ? 'به‌روزرسانی شهرها خطا داد؛ داده قبلی هر شهر ماند. تهران از این مرحله جداست.'
+      : `${num(Object.values(cities.manifest?.cities || {}).filter(c => c.ready).length)} شهر آماده؛ معابر و هات‌اسپات این هفته: ${cities.heavy.map(s => cities.cities[s]?.fa).filter(Boolean).join('، ')}.`]] : []),
   [okw(env.PRICES_OUTCOME) ? '✓' : '!', 'فید قیمت تیم', okw(env.PRICES_OUTCOME) ? 'اجرا شد (اگر منبعی در data/price-sources.json فعال باشد).' : 'خطا داد؛ قیمت‌های تیم تغییر نکرد.'],
   [okw(env.COMMIT_OUTCOME) ? '✓' : '✗', 'ذخیره و انتشار سایت', okw(env.COMMIT_OUTCOME) ? 'داده ذخیره شد و انتشار دوباره سایت شروع شد.' : 'ذخیره یا انتشار خطا داد؛ سایت داده قبلی را نشان می‌دهد.'],
 ];
@@ -124,6 +128,14 @@ const rowsHTML = [
   removed.length ? section(`حذف‌شده از بازار`, `${num(removed.length)} سازه دیگر در فهرست نیست${removed.length > 10 ? '؛ 10 مورد اول' : ''}`) + listCard(removed.slice(0, 10).map(x => [esc(x.name), meta(x), price(x.price)])) : '',
   moves.length ? section('تغییر قیمت', `قیمت ${num(moves.length)} سازه عوض شد؛ بیشترین افزایش و کاهش`) + listCard(topMoves.map(m => [esc(m.x.name), meta(m.x),
     `${toman(m.from)} ← ${toman(m.x.price)}<br><b style="color:${m.d > 0 ? C.bad : C.good};font-size:13.5px">${ltr(pct(m.d))}</b>`])) : '',
+  cities ? section('شهرهای دیگر', 'سازه‌ها و قیمت‌ها هر هفته؛ معابر، مناطق، هات‌اسپات‌ها و ترافیک نشان هر هفته برای دو شهر') + listCard(Object.entries(cities.cities).map(([slug, c]) => {
+    const STEP = { ok: 'به‌روز شد', kept: 'داده قبلی ماند', waiting: 'منتظر ساخت معابر', none: 'ندارد', historical: 'به‌روز شد', typical: 'به‌روز شد', nokey: 'بدون کلید' };
+    const parts = [c.steps.market && `سازه‌ها: ${STEP[c.steps.market] || c.steps.market}`, c.steps.roads && `معابر: ${STEP[c.steps.roads] || c.steps.roads}`,
+      c.steps.hotspots && `هات‌اسپات‌ها: ${STEP[c.steps.hotspots] || c.steps.hotspots}${c.hotspots ? ` (${num(c.hotspots)})` : ''}`, c.steps.traffic && `ترافیک: ${STEP[c.steps.traffic] || c.steps.traffic}`,
+      c.errors.length && `خطا: ${c.errors.join('، ')}`].filter(Boolean).join(' · ');
+    const d = c.count != null && c.prevCount != null ? c.count - c.prevCount : null;
+    return [esc(c.fa), esc(parts), c.count != null ? `${num(c.count)} سازه${d ? ` <span style="color:${C.mute};font-size:12px">${ltr(`${d > 0 ? '+' : ''}${d}`)}</span>` : ''}` : '—'];
+  })) : '',
 ].join('');
 
 const html = `<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">

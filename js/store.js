@@ -1,8 +1,9 @@
 // App state, persistence (localStorage) and share links (URL hash).
 import { DEFAULTS, SITE_COLORS } from './config.js';
 import { defaultProviderSettings, migrateSettings } from './providers.js';
+import { cityKey } from './city.js';
 
-const KEY = 'billboard-insight:v1';
+const KEY = cityKey('billboard-insight:v1');
 const SKEY = 'billboard-insight:settings:v1';
 
 export const state = {
@@ -93,7 +94,7 @@ function unb64url(s) {
 }
 export function shareUrl() {
   const payload = state.sites.map(s => slim(s, true));
-  return `${location.origin}${location.pathname}#s=${b64url(JSON.stringify(payload))}`;
+  return `${location.origin}${location.pathname}${location.search}#s=${b64url(JSON.stringify(payload))}`; // ?city=… stays in the link
 }
 function readShare() {
   const m = location.hash.match(/#s=([\w-]+)/);

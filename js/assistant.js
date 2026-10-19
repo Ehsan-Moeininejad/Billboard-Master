@@ -6,9 +6,10 @@
 import { PRESETS } from './hotlayer.js';
 import { parseBrief, planCampaign, fmtToman } from './campaign.js';
 import { TYPE_BY_KEY, BOURSE } from './hotspots.js';
+import { CITY, IS_TEHRAN, cityKey } from './city.js';
 
 const KEY_STORE = 'billboard-insight:ai-keys:v1';
-const CHAT_STORE = 'billboard-insight:ai-chat:v1';
+const CHAT_STORE = cityKey('billboard-insight:ai-chat:v1');
 const MODELS_STORE = 'billboard-insight:ai-or-models:v1';
 const store = {
   get(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch { return null; } },
@@ -31,10 +32,10 @@ const IDEAS = {
   pet: ['«هر چه دوست کوچکت لازم دارد»', '«غذا و لوازم حیوانات خانگی، تحویل سریع»'],
   youth: ['«سبک تو، قیمت دانشجویی»', '«هر چیزی، هر وقت، با یک کلیک»'],
   b2b: ['«خرید سازمانی ساده، با فاکتور رسمی»', '«تجهیز دفتر کار، یک‌جا و سریع»'],
-  reach: ['«هر چیزی که بخواهی، دیجی‌کالا»', '«خرید آنلاین، تحویل سریع در سراسر تهران»'],
+  reach: ['«هر چیزی که بخواهی، دیجی‌کالا»', `«خرید آنلاین، تحویل سریع در سراسر ${CITY.fa}»`],
 };
 const SUGGEST = [
-  'کمپین گوشی موبایل با بودجه 2 میلیارد برای 1 ماه در منطقه 3 و 6',
+  IS_TEHRAN ? 'کمپین گوشی موبایل با بودجه 2 میلیارد برای 1 ماه در منطقه 3 و 6' : `کمپین گوشی موبایل در ${CITY.fa} با بودجه 1 میلیارد برای 1 ماه`,
   'برای محصولات مادر و کودک کجا بیلبورد بزنیم؟',
   'لوازم خانگی، 10 بیلبورد، یک ماه',
   'کمپین آرایشی و بهداشتی نزدیک مال‌ها با بودجه 800 میلیون',
@@ -108,7 +109,7 @@ function providers(keys) {
   return list;
 }
 
-const SYSTEM = `تو مشاور رسانه و تبلیغات محیطی تیم مارکتینگ دیجی‌کالا در تهران هستی. فقط به فارسی و با اعداد لاتین (0-9) جواب بده، کوتاه و کاربردی (حداکثر 230 کلمه).
+const SYSTEM = `تو مشاور رسانه و تبلیغات محیطی تیم مارکتینگ دیجی‌کالا در شهر ${CITY.fa} هستی. فقط به فارسی و با اعداد لاتین (0-9) جواب بده، کوتاه و کاربردی (حداکثر 230 کلمه).
 داده‌ای که در پیام کاربر به شکل JSON می‌آید از موتور خود سایت است: هات‌اسپات‌های مرتبط (محل تجمع مخاطب) و سازه‌های بیلبورد پیشنهادی با قیمت ماهانه. فقط از همین سازه‌ها و محل‌ها نام ببر؛ سازه یا قیمت از خودت نساز.
 ساختار پاسخ: 1) **استراتژی** در 2-3 جمله؛ 2) **سازه‌های اولویت‌دار** (3 تا 5 مورد با دلیل کوتاه، با همان نام‌ها)؛ 3) **محل‌های هدف و زمان‌بندی**؛ 4) **ایده طراحی بیلبورد**: 2 تا 3 تیتر کوتاه (حداکثر 7 کلمه) و یک نکته طراحی متناسب با سرعت عبور. اگر سؤال ربطی به کمپین ندارد، کوتاه و بر اساس همین داده جواب بده.`;
 
@@ -133,7 +134,7 @@ export function createAssistant(ctx) {
 
   function contextJSON(params, R) {
     return JSON.stringify({
-      category: R.preset.fa, districts: params.districts?.length ? params.districts : 'کل تهران', budget_toman: params.budget || null, months: R.months,
+      category: R.preset.fa, districts: params.districts?.length ? params.districts : `کل ${CITY.fa}`, budget_toman: params.budget || null, months: R.months,
       planned_total_toman: R.spent || null,
       hotspots: R.spots.slice(0, 8).map(h => ({ name: h.title, type: TYPE_BY_KEY[h.t].fa + (h.t === 'bourse' ? ` (${BOURSE[h.sub]?.fa})` : ''), district: h.dist ? `منطقه ${h.dist}` : null, potential: h.score, peak: ctx.hot.peak(h.t) })),
       billboards: R.plan.slice(0, 10).map(b => ({ name: b.st.name, type: b.st.type, owner: b.st.owner || '', district: ctx.districtOf(b.st.lat, b.st.lng) ? `منطقه ${ctx.districtOf(b.st.lat, b.st.lng)}` : null, monthly_toman: b.price, traffic_score: b.score, category_fit: b.fitPct, near: b.why ? `${b.why.h.title} (${b.why.d} m)` : '' })),
@@ -224,7 +225,7 @@ export function createAssistant(ctx) {
       </div>
       ${showKeys ? keysHTML() : ''}
       <div class="as-body" id="asBody">
-        ${msgs.length ? list : `<div class="as-intro"><p>بگویید چه چیزی را تبلیغ می‌کنید، با چه بودجه‌ای، چند ماه و کجای تهران. سازه‌ها و محل‌های تجمع مرتبط را پیشنهاد می‌دهم و برای طراحی بیلبورد هم ایده می‌دهم.</p>
+        ${msgs.length ? list : `<div class="as-intro"><p>بگویید چه چیزی را تبلیغ می‌کنید، با چه بودجه‌ای، چند ماه و کجای ${CITY.fa}. سازه‌ها و محل‌های تجمع مرتبط را پیشنهاد می‌دهم و برای طراحی بیلبورد هم ایده می‌دهم.</p>
           <div class="as-sugg">${SUGGEST.map(s => `<button data-as="sugg">${esc(s)}</button>`).join('')}</div></div>`}
         ${busy ? '<div class="as-msg ai as-wait"><span class="as-typing"><i></i><i></i><i></i></span><small>در حال پیدا کردن سازه‌ها و نوشتن پیشنهاد؛ تا حدود 30 ثانیه</small></div>' : ''}
       </div>

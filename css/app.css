@@ -376,7 +376,8 @@ table.mini th { color: var(--muted); font-weight: 600; }
 @media (max-width: 860px) {
   :root { --panel-w: 0px; }
   .topbar { right: 12px; left: 12px; top: 12px; }
-  .brand-city, .brand-name { display: none; }
+  .brand-name { display: none; }
+  .brand-city { padding: 2px 8px; }
   .brand { padding: 0 10px; }
   .search { max-width: none; }
   .map-tools { top: 70px; left: 12px; }
@@ -944,3 +945,23 @@ table.board-tbl td.rd { max-width: 150px; overflow: hidden; text-overflow: ellip
   .tool-assist { display: grid; }
 }
 .hs-preset-sel { width: 100%; height: 34px; font-size: 12.5px; }
+
+/* ── city switcher ─────────────────────────────────────────── */
+.brand { position: relative; }
+button.brand-city { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; border: 0; font-family: inherit; }
+button.brand-city svg { width: 12px; height: 12px; }
+button.brand-city:hover { background: rgba(91,140,255,.24); }
+.city-pop { position: absolute; top: 54px; right: 0; width: 240px; z-index: 700; background: var(--surface); border: 1px solid var(--line-2); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px; white-space: normal; }
+.city-row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 9px; color: var(--text); text-decoration: none; }
+.city-row b { font-size: 13px; font-weight: 600; }
+.city-row small { flex: 1; font-size: 11px; color: var(--muted); text-align: left; }
+.city-row svg { width: 14px; height: 14px; color: var(--accent); }
+.city-row:not(.off):not(.on):hover { background: var(--surface-2); }
+.city-row.on { background: var(--accent-soft); }
+.city-row.off { opacity: .45; cursor: default; }
+.city-foot { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+
+.pop-move { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; height: 30px; border-radius: 9px; border: 1px dashed var(--line-2); font-size: 11.5px; color: var(--text-2); }
+.pop-move:hover { border-color: var(--accent); color: var(--text); }
+.pop-move.on { border-style: solid; border-color: var(--warn); color: var(--warn); }
+.pop-move svg { width: 13px; height: 13px; }

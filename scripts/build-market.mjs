@@ -10,10 +10,15 @@
 //     or share one fallback coordinate with many others, are moved onto the named highway
 //     (at the named cross street / landmark when it can be found) and marked as approximate
 //   • price history (data/price-history.csv) and change since the previous run
-import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
+import { CITIES, cityDir, ELSEWHERE } from '../js/cities.js';
 
-const SRC = process.argv[2] || 'https://raw.githubusercontent.com/alireza-zareian/Rasamap-Repository/main/scraper/data/billboards.json';
-const BOX = { s: 35.55, w: 51.10, n: 35.85, e: 51.65 };
+// --city=<slug> builds another city into data/cities/<slug>/; without it everything below is Tehran, unchanged
+const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran').slice(7);
+if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
+const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
+const SRC = process.argv.slice(2).find(a => !a.startsWith('--')) || 'https://raw.githubusercontent.com/alireza-zareian/Rasamap-Repository/main/scraper/data/billboards.json';
+const BOX = IS_TEHRAN ? { s: 35.55, w: 51.10, n: 35.85, e: 51.65 } : { s: CITY.box[0], w: CITY.box[1], n: CITY.box[2], e: CITY.box[3] };
 
 // ── geometry helpers (planar, metres) ──────────────────────
 const R = 6371008.8, rad = d => d * Math.PI / 180;
@@ -35,8 +40,8 @@ const dist = (a, b) => Math.hypot(...proj(a, b));
 // ── reference roads: real OSM geometry when the workflow downloaded it, else the bundled approximation
 function loadRoads() {
   // prebuilt by scripts/build-roads.mjs (real OSM geometry)
-  if (existsSync('data/roads.json')) {
-    const d = JSON.parse(readFileSync('data/roads.json', 'utf8'));
+  if (existsSync(`${DIR}/roads.json`)) {
+    const d = JSON.parse(readFileSync(`${DIR}/roads.json`, 'utf8'));
     const byName = new Map();
     for (const w of d.ways) {
       if (!w.name || !['motorway', 'trunk', 'primary'].includes(w.cls)) continue;
@@ -47,6 +52,7 @@ function loadRoads() {
     }
     return [...byName].map(([name, v]) => ({ name, lines: v.lines, cls: v.cls }));
   }
+  if (!IS_TEHRAN) { console.log(`${DIR}/roads.json missing; ${SLUG} is skipped until its roads are built.`); process.exit(0); }
   if (existsSync('data/ref-roads.json')) {
     const osm = JSON.parse(readFileSync('data/ref-roads.json', 'utf8'));
     const byName = new Map();
@@ -62,6 +68,7 @@ function loadRoads() {
   return ROADS.map(r => ({ name: r.name, lines: [r.line], cls: r.cls }));
 }
 function loadPlaces() {
+  if (!IS_TEHRAN) return []; // landmark list exists for Tehran only
   const src = readFileSync('js/demo/tehran.js', 'utf8');
   return Function(`${src.replace(/export const /g, 'const ')}; return PLACES;`)();
 }
@@ -69,10 +76,11 @@ const norm = s => String(s || '').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').
 const core = name => norm(name).replace(/^(بزرگراه|آزادراه|اتوبان|خیابان|بلوار)\s+/, '').replace(/^شهید\s+/, '');
 
 // names too generic to identify a road from an address ("تهران" alone matches every listing)
-const STOP = new Set(['تهران', 'آزادراه', 'بزرگراه', 'اتوبان', 'کرج', 'شمال', 'جنوب', 'شرق', 'غرب', 'میدان', 'پل']);
+const STOP = new Set(['تهران', 'آزادراه', 'بزرگراه', 'اتوبان', 'کرج', 'شمال', 'جنوب', 'شرق', 'غرب', 'میدان', 'پل', ...(IS_TEHRAN ? [] : [CITY.fa, 'خیابان', 'بلوار', 'کمربندی', 'جاده'])]);
 const roads = loadRoads().map(r => ({ ...r, key: core(r.name) })).filter(r => r.key.length >= 3 && !STOP.has(r.key));
 const places = loadPlaces();
-const MAJOR = roads.filter(r => /بزرگراه|آزادراه|اتوبان/.test(r.name) || r.cls === 'motorway' || r.cls === 'trunk');
+// outside Tehran most listings name boulevards and streets, so every main road counts
+const MAJOR = IS_TEHRAN ? roads.filter(r => /بزرگراه|آزادراه|اتوبان/.test(r.name) || r.cls === 'motorway' || r.cls === 'trunk') : roads;
 
 function namedRoad(text) {
   const t = norm(text);
@@ -110,15 +118,16 @@ const inBox = x => x.lat > BOX.s && x.lat < BOX.n && x.lng > BOX.w && x.lng < BO
 // a geocoding slip inside Tehran is fixable; a point in another city is a listing from another city
 const nearBox = x => x.lat > BOX.s - 0.08 && x.lat < BOX.n + 0.08 && x.lng > BOX.w - 0.1 && x.lng < BOX.e + 0.1;
 // addresses that place the board outside the city even when the named freeway enters Tehran
-const OUTSIDE = /(چالوس|مرزن|تونل|سنگان|کرج|شهریار|اسلامشهر|لواسان|دماوند|رودهن|فشم|پرند|قزوین|اصفهان|شیراز|مشهد|تبریز|قم|کیش|رشت|ساری)/;
-const tehran = raw.filter(x => x.city === 'تهران' || (x.lat && inBox(x)));
+const OUTSIDE = IS_TEHRAN ? /(چالوس|مرزن|تونل|سنگان|کرج|شهریار|اسلامشهر|لواسان|دماوند|رودهن|فشم|پرند|قزوین|اصفهان|شیراز|مشهد|تبریز|قم|کیش|رشت|ساری)/
+  : new RegExp(`(${ELSEWHERE.filter(w => w !== CITY.fa && w !== 'تهران').join('|')})`);
+const tehran = raw.filter(x => CITY.sources.includes(x.city) || (x.lat && inBox(x))); // (named for Tehran; holds this city's listings)
 
 // listings that share one coordinate with many others got a city-level fallback from the geocoder
 const counts = new Map();
 tehran.forEach(x => { if (x.lat) { const k = `${x.lat.toFixed(4)},${x.lng.toFixed(4)}`; counts.set(k, (counts.get(k) || 0) + 1); } });
 
 const TYPE = { billboard: 'bulletin', bridge: 'bridge', station: 'poster', digital: 'digital', led: 'digital', mall: 'poster', rooftop: 'rooftop' };
-const prev = existsSync('data/market.json') ? JSON.parse(readFileSync('data/market.json', 'utf8')) : { items: [] };
+const prev = existsSync(`${DIR}/market.json`) ? JSON.parse(readFileSync(`${DIR}/market.json`, 'utf8')) : { items: [] };
 const prevById = new Map((prev.items || []).map(x => [x.id, x]));
 const stats = { total: 0, ok: 0, moved: 0, onRoad: 0, unknown: 0, noCoords: 0, outside: 0 };
 const items = [];
@@ -157,8 +166,9 @@ for (const x of tehran) {
 }
 
 const out = { updatedAt: new Date().toISOString(), source: { name: 'Rasamap (MIT)', url: 'https://github.com/alireza-zareian/Rasamap-Repository', sites: ['billboardiha.com', 'irbillboard.com', 'aradholding.com'] }, stats, items };
-writeFileSync('data/market.json', JSON.stringify(out));
-if (!existsSync('data/price-history.csv')) writeFileSync('data/price-history.csv', 'date,source,id,name,owner,price,negotiated\n');
+mkdirSync(DIR, { recursive: true });
+writeFileSync(`${DIR}/market.json`, JSON.stringify(out));
+if (!existsSync(`${DIR}/price-history.csv`)) writeFileSync(`${DIR}/price-history.csv`, 'date,source,id,name,owner,price,negotiated\n');
 const today = out.updatedAt.slice(0, 10);
-appendFileSync('data/price-history.csv', items.filter(i => i.price).map(i => [today, 'market', i.id, `"${i.name.replace(/"/g, '""')}"`, i.owner, i.price, ''].join(',')).join('\n') + '\n');
+appendFileSync(`${DIR}/price-history.csv`, items.filter(i => i.price).map(i => [today, 'market', i.id, `"${i.name.replace(/"/g, '""')}"`, i.owner, i.price, ''].join(',')).join('\n') + '\n');
 console.log(JSON.stringify(stats));

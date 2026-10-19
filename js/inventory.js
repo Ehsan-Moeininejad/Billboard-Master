@@ -1,7 +1,8 @@
 // Inventory of existing billboard structures: imported lists, manual pins, OSM finds.
 import { parseNum } from './fmt.js';
+import { cityKey } from './city.js';
 
-const KEY = 'billboard-insight:inventory:v2';
+const KEY = cityKey('billboard-insight:inventory:v2');
 export const TYPE_FA = { bridge: 'پل عابر', bulletin: 'بیلبورد', poster: 'استرابورد', digital: 'دیجیتال', rooftop: 'پشت‌بامی', ad: 'تابلو OSM' };
 export const SOURCE_FA = { import: 'واردشده', manual: 'ثبت دستی', osm: 'OpenStreetMap', demo: 'نمونه دمو', catalog: 'کاتالوگ', market: 'بازار' };
 

@@ -3,9 +3,13 @@
 // list the billboard structures inside or next to each hotspot.
 import { HOTSPOT_TYPES, TYPE_BY_KEY, BOURSE, HOTSPOT_QUERY, LEVEL_FA, COVERAGE, COVERAGE_FA, buildHotspots, hotspotTitle, unpackRing, distToShape } from './hotspots.js';
 import { OVERPASS_ENDPOINTS } from './config.js';
+import { CITY, IS_TEHRAN, dataPath, cityKey } from './city.js';
+import { HOTSPOT_BBOX } from './hotspots.js';
 
 const PREF_KEY = 'billboard-insight:hotspots:v1';
-const CACHE_KEY = 'billboard-insight:hotspots-cache:v4';
+const CACHE_KEY = cityKey('billboard-insight:hotspots-cache:v4');
+// the live fallback query for this city's area
+const CITY_QUERY = IS_TEHRAN ? HOTSPOT_QUERY : HOTSPOT_QUERY.replaceAll(HOTSPOT_BBOX.join(','), CITY.box.join(','));
 const CACHE_DAYS = 8;
 const KX = 111320 * Math.cos(35.7 * Math.PI / 180), KY = 110540;
 const dm = (a, b) => Math.hypot((a.lat - b.lat) * KY, (a.lng - b.lng) * KX);
@@ -120,14 +124,14 @@ export function createHotspots(ctx) {
     if (H.items || H.status === 'loading') return H.items;
     H.status = 'loading'; renderPop();
     try {
-      const r = await fetch('data/hotspots.json', { cache: 'no-cache' });
+      const r = await fetch(dataPath('hotspots.json'), { cache: 'no-cache' });
       if (r.ok) { const d = await r.json(); if (d.items?.length) { set(d.items, 'build', d.updatedAt); return H.items; } }
     } catch { /* no prebuilt file — fall back below */ }
     const c = store.get(CACHE_KEY);
     if (c?.items?.length && Date.now() - c.at < CACHE_DAYS * 864e5) { set(c.items, 'cache', new Date(c.at).toISOString()); return H.items; }
     try {
       H.status = 'building'; renderPop();
-      const osm = await overpass(HOTSPOT_QUERY);
+      const osm = await overpass(CITY_QUERY);
       const items = buildHotspots(osm);
       store.set(CACHE_KEY, { at: Date.now(), items });
       set(items, 'live', new Date().toISOString());
@@ -320,11 +324,11 @@ export function createHotspots(ctx) {
     if (!H.items) { el.innerHTML = `<div class="hs-empty">${pref.on ? '' : 'برای دیدن فهرست، نمایش را روشن کنید'}</div>`; return; }
     const bounds = map.getBounds(), q = query.trim();
     let list, title;
-    if (q) { list = H.items.filter(h => h.title.includes(q) || (h.dist && `منطقه ${h.dist}` === q)); title = `نتیجه جستجو در تهران (${list.length})`; }
+    if (q) { list = H.items.filter(h => h.title.includes(q) || (h.dist && `منطقه ${h.dist}` === q)); title = `نتیجه جستجو در ${CITY.fa} (${list.length})`; }
     else {
       list = H.items.filter(visible).filter(h => bounds.contains([h.lat, h.lng]));
       title = 'بیشترین پتانسیل در محدوده نقشه';
-      if (!list.length) { list = H.items.filter(visible); title = 'بیشترین پتانسیل در تهران'; }
+      if (!list.length) { list = H.items.filter(visible); title = `بیشترین پتانسیل در ${CITY.fa}`; }
     }
     $('#hotPop .hs-list-title').textContent = title;
     el.innerHTML = list.slice(0, 40).map(h => `<div class="hs-row ${isSel(h) ? 'sel' : ''}" style="--c:${typeColor(h)}"><button class="hs-check" data-hs="sel" data-id="${h.id}" aria-label="انتخاب" title="انتخاب برای کپی و خروجی">${isSel(h) ? icon('check') : ''}</button><button class="hs-row-main" data-hs="focus" data-id="${h.id}"><i></i><span><b>${esc(h.title)}</b><small>${TYPE_BY_KEY[h.t].short}${h.dist ? ` · منطقه ${h.dist}` : ''}${h.area ? ` · ${h.area} هکتار` : ''}${ringsOf(h).length > 1 ? ` · ${ringsOf(h).length} بخش` : ''}</small></span><em class="lv${h.lvl}">${h.score}</em></button></div>`).join('')
@@ -385,7 +389,7 @@ export function createHotspots(ctx) {
   function exportAll(f, only = null) {
     const list = only || (H.items || []).filter(visible);
     if (!list.length) { ctx.toast('با این فیلترها هات‌اسپاتی برای خروجی نیست'); return; }
-    const day = new Date().toISOString().slice(0, 10), base = `hotspots-tehran-${only ? 'selected-' : ''}${day}`;
+    const day = new Date().toISOString().slice(0, 10), base = `hotspots-${CITY.slug}-${only ? 'selected-' : ''}${day}`;
     if (f === 'geojson') download(`${base}.geojson`, JSON.stringify({ type: 'FeatureCollection', features: list.map(feature) }), 'application/geo+json');
     else if (f === 'kml') download(`${base}.kml`, kml(list), 'application/vnd.google-earth.kml+xml');
     else {

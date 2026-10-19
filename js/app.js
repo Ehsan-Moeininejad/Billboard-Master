@@ -10,6 +10,8 @@ import { monthTable, startOptions, campaignFactors, persianMonth } from './calen
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
 import { createHotspots } from './hotlayer.js';
 import { createAssistant } from './assistant.js';
+import { CITY, IS_TEHRAN, dataPath, cityUrl } from './city.js';
+import { CITIES, CITY_SLUGS } from './cities.js';
 import * as net from './net.js';
 const { roadsNear, structuresIn, highwayNetwork } = net;
 import * as providers from './providers.js';
@@ -40,8 +42,8 @@ async function init() {
   state.sites.forEach(s => { s.status = 'ready'; });
 
   map = L.map('map', {
-    center: TEHRAN.center, zoom: TEHRAN.zoom, zoomControl: false, attributionControl: true,
-    maxBounds: L.latLngBounds(TEHRAN.bounds).pad(0.6), minZoom: 10, worldCopyJump: false,
+    center: CITY.center, zoom: CITY.zoom, zoomControl: false, attributionControl: true,
+    maxBounds: L.latLngBounds(CITY.bounds).pad(0.6), minZoom: 10, worldCopyJump: false,
   });
   $('#map').setAttribute('dir', 'ltr');
   window.__bbMap = map; // handy for debugging from the console
@@ -62,7 +64,7 @@ async function init() {
       state.mapMode = null; document.body.classList.remove('picking');
       setModeHint(null);
       setStructuresLayer(true); scheduleRefresh(50);
-      toast(`«${it.name}» ثبت شد؛ برای جابه‌جایی، نشانگر را بکشید`, 'ok');
+      toast(`«${it.name}» ثبت شد؛ برای جابه‌جایی، «جابه‌جا کردن» را در پاپ‌آپ سازه بزنید`, 'ok');
       return;
     }
     if (state.listTab === 'sites' || state.selectedId) { analyzeAt(e.latlng.lat, e.latlng.lng); return; }
@@ -1252,7 +1254,7 @@ async function loadOsmStructures(bounds = map.getBounds()) {
 /** Weekly Neshan traffic for every market structure (data/traffic.json, built by the data workflow). */
 async function loadTraffic() {
   try {
-    const r = await fetch('data/traffic.json', { cache: 'no-cache' });
+    const r = await fetch(dataPath('traffic.json'), { cache: 'no-cache' });
     if (!r.ok) return;
     const t = await r.json();
     if (t?.items && Object.keys(t.items).length) state.traffic = t;
@@ -1384,6 +1386,7 @@ function structIcon(st) {
 
 let dotRenderer = null;
 const TIER_COL = { t1: '#2BD9A6', t2: '#F5C451', t3: '#FF6B6B' };
+const unlockedIds = new Set();
 function drawStructures() {
   if (!invLayer) return;
   invLayer.clearLayers();
@@ -1417,9 +1420,11 @@ function drawStructures() {
     if (st.source === 'osm' && !showOsm) return;
     const r = rankById.get(st.id);
     if (scoped && !r && z < 14) return;   // keep the chosen district readable
-    const m = L.marker([st.lat, st.lng], { icon: structIcon(st), title: st.name, draggable: st.source !== 'osm', zIndexOffset: r?.ranked ? 500 - (r.rank || 0) : 0 });
+    // structures stay put unless moving is unlocked (for all, in the layers menu, or for one, from its popup)
+    const free = st.source !== 'osm' && (state.settings.unlockMove || unlockedIds.has(st.id));
+    const m = L.marker([st.lat, st.lng], { icon: structIcon(st), title: st.name, draggable: free, zIndexOffset: r?.ranked ? 500 - (r.rank || 0) : 0 });
     m.bindPopup(() => structPopup(st, rankById.get(st.id)));
-    m.on('dragend', ev => { const ll = ev.target.getLatLng(); const it = state.inventory.find(x => x.id === st.id); if (it) { it.lat = ll.lat; it.lng = ll.lng; it.approx = false; it.userMoved = true; it.loc = 'user'; it.locNote = ''; persistInventory(); rankById.delete(it.id); state.plan.evalKey = ''; toast('مکان سازه اصلاح شد و ذخیره ماند'); scheduleRefresh(); } });
+    m.on('dragend', ev => { const ll = ev.target.getLatLng(); const it = state.inventory.find(x => x.id === st.id); unlockedIds.delete(st.id); if (!state.settings.unlockMove) setTimeout(drawStructures, 0); if (it) { it.lat = ll.lat; it.lng = ll.lng; it.approx = false; it.userMoved = true; it.loc = 'user'; it.locNote = ''; persistInventory(); rankById.delete(it.id); state.plan.evalKey = ''; toast('مکان سازه اصلاح شد و ذخیره ماند'); scheduleRefresh(); } });
     m.addTo(invLayer);
   });
 }
@@ -1439,11 +1444,12 @@ function structPopup(st, r) {
   const e = state.plan.entries?.find(x => x.id === st.id);
   const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${st.priceEstimated && st.priceSource !== 'manual' ? ' · برآورد منبع' : ''}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
   const addr = st.address && st.address !== st.name ? `<div class="pop-addr">${esc(st.address)}</div>` : '';
-  const loc = locApprox(st) ? `<div class="pop-warn">${icon('target')} ${LOC_FA[st.loc] || 'مکان تقریبی'}${st.locNote ? ` (${esc(st.locNote)})` : ''} — با کشیدن نشانگر اصلاح کنید</div>` : '';
+  const loc = locApprox(st) ? `<div class="pop-warn">${icon('target')} ${LOC_FA[st.loc] || 'مکان تقریبی'}${st.locNote ? ` (${esc(st.locNote)})` : ''} — با «جابه‌جا کردن» اصلاح کنید</div>` : '';
   const hs = hot?.at(st.lat, st.lng);
   const hsLine = hs ? `<button class="pop-hot" data-act="hs-open" data-id="${hs.id}">${icon('flame')} داخل هات‌اسپات «${esc(hs.title)}» · پتانسیل ${hs.score}</button>` : '';
   return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${loc}${hsLine}${stats}
-    <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${st.lat}" data-lng="${st.lng}" data-kind="${st.type}" data-name="${esc(st.name)}" data-price="${st.price || ''}">${icon('target')} تحلیل کامل</button>`;
+    <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${st.lat}" data-lng="${st.lng}" data-kind="${st.type}" data-name="${esc(st.name)}" data-price="${st.price || ''}">${icon('target')} تحلیل کامل</button>
+    ${st.source !== 'osm' && !state.settings.unlockMove ? `<button class="pop-move ${unlockedIds.has(st.id) ? 'on' : ''}" data-act="unlock-move" data-id="${esc(st.id)}">${icon(unlockedIds.has(st.id) ? 'unlock' : 'lock')} ${unlockedIds.has(st.id) ? 'آزاد است؛ نشانگر را بکشید (بعد از رها کردن دوباره قفل می‌شود)' : 'جابه‌جا کردن این سازه'}</button>` : ''}`;
 }
 
 function setStructuresLayer(on) {
@@ -1474,7 +1480,7 @@ function rerank() { state.rankDirty = true; scheduleRefresh(0); }
 /** Real structures + prices rebuilt weekly by .github/workflows/data.yml (data/market.json). */
 async function loadMarket() {
   try {
-    const r = await fetch('data/market.json', { cache: 'no-cache' });
+    const r = await fetch(dataPath('market.json'), { cache: 'no-cache' });
     if (!r.ok) throw new Error(r.status);
     const m = await r.json();
     state.market = { updatedAt: m.updatedAt, stats: m.stats, source: m.source, count: (m.items || []).length };
@@ -1514,11 +1520,15 @@ function clutterAt(lat, lng) {
   return allStructures().filter(s => { const d = dist([s.lat, s.lng], [lat, lng]); return d > 15 && d < VIS.clutterRadius; }).length;
 }
 
+// district numbers of this city: Tehran's fixed 22, elsewhere whatever OSM has
+const distNums = () => IS_TEHRAN ? Array.from({ length: 22 }, (_, k) => k + 1) : [...new Set((state.districts || []).map(d => d.n))].sort((a, b) => a - b);
+const distFa = n => (IS_TEHRAN ? DISTRICT_CENTERS[n - 1]?.fa : '') || '';
 function distPickerHTML() {
   const S = state.scope;
   const counts = new Map(); (state.plan.entries || []).forEach(e => { if (e.src === 'inv' && e.district) counts.set(e.district, (counts.get(e.district) || 0) + 1); });
-  const btns = Array.from({ length: 22 }, (_, k) => k + 1).map(n => `<button class="${S.districts.includes(n) ? 'on' : ''} ${counts.get(n) ? '' : 'empty'}" data-act="sc-dist" data-v="${n}" title="منطقه ${n} — ${esc(DISTRICT_CENTERS[n - 1].fa)}: ${counts.get(n) || 0} سازه">${n}<small>${counts.get(n) ?? ''}</small></button>`).join('');
-  return `<div class="dist-pick">${btns}</div><div class="dist-pick-foot"><small>${S.districts.length ? S.districts.map(n => `${n}: ${esc(DISTRICT_CENTERS[n - 1].fa)}`).join(' · ') : 'یک یا چند منطقه را بزنید یا روی نقشه کلیک کنید · عدد کوچک = تعداد سازه'}</small>${S.districts.length ? '<a href="#" class="link" data-act="sc-clear">پاک کردن</a>' : ''}</div>`;
+  if (!distNums().length) return `<div class="dist-pick-foot"><small>${CITY.districts ? 'مرز مناطق شهرداری هنوز بارگذاری نشده؛ چند لحظه بعد دوباره بزنید.' : `برای ${CITY.fa} مرز مناطق شهرداری در OpenStreetMap ثبت نشده؛ از «کل شهر» یا «محدوده نقشه» استفاده کنید.`}</small></div>`;
+  const btns = distNums().map(n => `<button class="${S.districts.includes(n) ? 'on' : ''} ${counts.get(n) ? '' : 'empty'}" data-act="sc-dist" data-v="${n}" title="منطقه ${n}${distFa(n) ? ` — ${esc(distFa(n))}` : ''}: ${counts.get(n) || 0} سازه">${n}<small>${counts.get(n) ?? ''}</small></button>`).join('');
+  return `<div class="dist-pick">${btns}</div><div class="dist-pick-foot"><small>${S.districts.length ? S.districts.map(n => `${n}${distFa(n) ? `: ${esc(distFa(n))}` : ''}`).join(' · ') : 'یک یا چند منطقه را بزنید یا روی نقشه کلیک کنید · عدد کوچک = تعداد سازه'}</small>${S.districts.length ? '<a href="#" class="link" data-act="sc-clear">پاک کردن</a>' : ''}</div>`;
 }
 
 function inventoryHTML() {
@@ -1527,7 +1537,7 @@ function inventoryHTML() {
   const f = state.invFilter || 'all';
   const list = rk.list || [];
   const P = state.plan;
-  const scopeName = S.mode === 'district' && S.districts.length ? `منطقه ${S.districts.join('، ')}` : S.mode === 'view' ? 'محدوده نقشه' : 'کل تهران';
+  const scopeName = S.mode === 'district' && S.districts.length ? `منطقه ${S.districts.join('، ')}` : S.mode === 'view' ? 'محدوده نقشه' : `کل ${CITY.fa}`;
   const status = rk.status === 'loading' ? 'در حال سنجش همه سازه‌ها…' : rk.status === 'error' ? 'دریافت معابر از OpenStreetMap ممکن نشد. دوباره تلاش کنید.' : '';
   const priced = list.filter(x => x.monthly);
   const best = priced.filter(x => x.valueIdx != null).sort((a, b) => b.valueIdx - a.valueIdx)[0];
@@ -1556,8 +1566,8 @@ function inventoryHTML() {
     </div>
     <div class="p-sec">
       <div class="seg seg-sm scope-seg">
-        <button class="${S.mode === 'city' ? 'on' : ''}" data-act="sc-mode" data-v="city">کل تهران</button>
-        <button class="${S.mode === 'district' ? 'on' : ''}" data-act="sc-mode" data-v="district">مناطق شهرداری</button>
+        <button class="${S.mode === 'city' ? 'on' : ''}" data-act="sc-mode" data-v="city">کل ${CITY.fa}</button>
+        ${CITY.districts ? `<button class="${S.mode === 'district' ? 'on' : ''}" data-act="sc-mode" data-v="district">مناطق شهرداری</button>` : ''}
         <button class="${S.mode === 'view' ? 'on' : ''}" data-act="sc-mode" data-v="view">محدوده نقشه</button>
       </div>
       ${S.mode === 'district' ? distPickerHTML() : ''}
@@ -1574,7 +1584,7 @@ function inventoryHTML() {
         <button class="btn btn-ghost btn-sm" data-act="inv-import">${icon('download')} ورود فهرست (اکسل/CSV)</button>
         <button class="btn btn-ghost btn-sm ${state.mapMode === 'addStructure' ? 'on' : ''}" data-act="inv-add">${icon('plus')} ثبت روی نقشه</button>
       </div>
-      <div class="note" style="margin-top:10px"><b>منبع سازه‌ها:</b> ${state.market ? `${num(state.market.count)} سازه واقعی از آگهی‌های عمومی اجاره بیلبورد (Rasamap)` : 'فهرست واردشده'}${DEMO ? '' : '، به‌علاوه پل‌های عابر OpenStreetMap در زوم 14 به بالا'}. مکان تقریبی با حاشیه خط‌چین مشخص است؛ با کشیدن اصلاحش کنید.</div>
+      <div class="note" style="margin-top:10px"><b>منبع سازه‌ها:</b> ${state.market ? `${num(state.market.count)} سازه واقعی از آگهی‌های عمومی اجاره بیلبورد (Rasamap)` : 'فهرست واردشده'}${DEMO ? '' : '، به‌علاوه پل‌های عابر OpenStreetMap در زوم 14 به بالا'}. مکان تقریبی با حاشیه خط‌چین مشخص است؛ با «جابه‌جا کردن» در پاپ‌آپ سازه اصلاحش کنید.</div>
     </div>`;
 }
 
@@ -1708,8 +1718,8 @@ async function importRows(rows, source, progress = () => {}) {
     progress(`مکان‌یابی ${i + 1} از ${rows.length}: ${esc(r.name)}`);
     try {
       const q = (r.address || r.name).replace(/\(.*?\)/g, '').trim();
-      const res = await providers.search(`${q} تهران`, state.settings);
-      const hit = res.items.find(x => L.latLngBounds(TEHRAN.bounds).contains([x.lat, x.lng]));
+      const res = await providers.search(`${q} ${CITY.fa}`, state.settings);
+      const hit = res.items.find(x => L.latLngBounds(CITY.bounds).contains([x.lat, x.lng]));
       if (hit) ok.push({ ...r, lat: hit.lat, lng: hit.lng, approx: true }); else failed.push(r);
     } catch { failed.push(r); }
     await new Promise(res => setTimeout(res, DEMO ? 60 : 350));
@@ -1901,7 +1911,7 @@ function planHTML() {
         <div class="field"><label for="plRoad">حداکثر در هر مسیر</label><select id="plRoad" class="sel" data-act="pl-perroad">${[[1, '1 سازه'], [2, '2 سازه'], [3, '3 سازه'], [0, 'بدون محدودیت']].map(([v, l]) => `<option value="${v}" ${P.perRoad === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
         <div class="field"><label for="plScore">حداقل امتیاز</label><select id="plScore" class="sel" data-act="pl-minscore">${[0, 40, 50, 60, 70].map(v => `<option value="${v}" ${P.minScore === v ? 'selected' : ''}>${v ? v + '+' : 'همه'}</option>`).join('')}</select></div>
       </div>
-      <div class="field"><span class="field-l">مناطق شهرداری</span><div class="dist-mini">${Array.from({ length: 22 }, (_, i) => i + 1).map(n => `<button class="${P.districts.includes(n) ? 'on' : ''}" data-act="pl-dist" data-v="${n}" title="منطقه ${n} — ${esc(DISTRICT_CENTERS[n - 1].fa)}">${n}</button>`).join('')}</div><small>${P.districts.length ? `فقط مناطق ${P.districts.join('، ')}` : 'همه مناطق'}</small></div>
+      <div class="field"><span class="field-l">مناطق شهرداری</span><div class="dist-mini">${distNums().map(n => `<button class="${P.districts.includes(n) ? 'on' : ''}" data-act="pl-dist" data-v="${n}" title="منطقه ${n}${distFa(n) ? ` — ${esc(distFa(n))}` : ''}">${n}</button>`).join('') || '<small>مناطق شهرداری برای این شهر در دسترس نیست</small>'}</div><small>${P.districts.length ? `فقط مناطق ${P.districts.join('، ')}` : 'همه مناطق'}</small></div>
       <label class="switch-row"><input type="checkbox" data-act="pl-sites" ${P.includeSites ? 'checked' : ''}><span class="switch"></span><span><b>نقاط مقایسه هم شرکت کنند</b><small>نقاطی که اجاره ماهانه دارند</small></span></label>
     </div>
   </aside>`;
@@ -2008,9 +2018,9 @@ function pricesHTML() {
     const priced = state.inventory.filter(x => x.source === 'market' && x.price);
     const est = priced.filter(x => x.priceEstimated && x.priceSource !== 'manual').length, man = state.inventory.filter(x => x.source === 'market' && x.priceSource === 'manual').length;
     return `<div class="s-card market-card"><h3>داده بازار (واقعی)</h3>
-      <p class="s-desc">فهرست سازه‌ها و قیمت‌های اعلام‌شده در سایت‌های اجاره بیلبورد تهران (${(M.source?.sites || []).map(x => `<span class="ltr">${esc(x)}</span>`).join('، ')})، از مجموعه‌داده باز <a href="${esc(M.source?.url || '#')}" target="_blank" rel="noopener">Rasamap</a> (MIT). مخزن هر 7 روز آن را دوباره می‌خواند.</p>
+      <p class="s-desc">فهرست سازه‌ها و قیمت‌های اعلام‌شده در سایت‌های اجاره بیلبورد ${CITY.fa} (${(M.source?.sites || []).map(x => `<span class="ltr">${esc(x)}</span>`).join('، ')})، از مجموعه‌داده باز <a href="${esc(M.source?.url || '#')}" target="_blank" rel="noopener">Rasamap</a> (MIT). مخزن هر 7 روز آن را دوباره می‌خواند.</p>
       <div class="mk-stats">
-        <div><b>${num(M.count)}</b><span>سازه در تهران</span></div>
+        <div><b>${num(M.count)}</b><span>سازه در ${CITY.fa}</span></div>
         <div><b>${num(priced.length)}</b><span>قیمت‌دار</span></div>
         <div><b>${num((st.moved || 0) + (st.onRoad || 0))}</b><span>مکان تقریبی</span></div>
         <div><b>${srcAge ?? '—'}</b><span>روز از آخرین برداشت قیمت</span></div>
@@ -2146,7 +2156,7 @@ function onPlannerChange(t) {
 async function refreshFeed(manual = false) {
   const pr = state.pricing;
   const urls = [];
-  if (!DEMO) urls.push('data/prices.json');
+  if (!DEMO && IS_TEHRAN) urls.push('data/prices.json'); // the team price sheet covers Tehran
   if (pr.feed.url) urls.push(pr.feed.url);
   if (DEMO) {
     if (manual) { pr.feed.updatedAt = new Date().toISOString(); pr.feed.count = state.inventory.filter(x => x.price).length; pr.feed.status = 'ok'; persistPricing(); toast('فید دمو به‌روز شد (قیمت‌ها فرضی‌اند)', 'ok'); renderPlanner(); }
@@ -2179,7 +2189,7 @@ async function loadDistricts() {
   if (state.districts) return state.districts;
   let d = null;
   try { d = await net.districts(); } catch { d = null; }
-  state.districts = d || approximateDistricts();
+  state.districts = d || (IS_TEHRAN ? approximateDistricts() : []);
   state.districtsApprox = !d;
   return state.districts;
 }
@@ -2260,7 +2270,7 @@ function boardHTML() {
   const rows = boardRows();
   const owners = [...new Set((P.entries || []).map(e => e.owner).filter(Boolean))];
   const ds = state.districts || [];
-  const allD = Array.from({ length: 22 }, (_, i) => i + 1);
+  const allD = distNums();
   const perD = allD.map(n => {
     const r = (P.entries || []).filter(e => e.district === n);
     return { n, count: r.length, imp: r.reduce((a, e) => a + e.ev.dailyImp, 0), score: r.length ? Math.round(r.reduce((a, e) => a + e.score, 0) / r.length) : 0 };
@@ -2268,7 +2278,7 @@ function boardHTML() {
   const maxImp = Math.max(1, ...perD.map(d => d.imp));
   const dGrid = allD.map(n => {
     const d = perD[n - 1];
-    return `<button class="dist ${B.districts.includes(n) ? 'on' : ''} ${d.count ? '' : 'empty'}" data-act="bd-dist" data-v="${n}" title="منطقه ${n} — ${esc(DISTRICT_CENTERS[n - 1].fa)}: ${d.count} سازه، میانگین امتیاز ${d.score}">
+    return `<button class="dist ${B.districts.includes(n) ? 'on' : ''} ${d.count ? '' : 'empty'}" data-act="bd-dist" data-v="${n}" title="منطقه ${n}${distFa(n) ? ` — ${esc(distFa(n))}` : ""}: ${d.count} سازه، میانگین امتیاز ${d.score}">
       <b>${n}</b><i style="height:${Math.round(d.imp / maxImp * 100)}%"></i><small>${d.count}</small></button>`;
   }).join('');
   const sel = B.sel;
@@ -2368,7 +2378,7 @@ function bindSearch() {
     searchItems = items; searchActive = -1;
     box.hidden = false;
     box.innerHTML = (items.length ? items.map((it, i) => `<button class="sr-item" data-i="${i}" role="option">${icon(it.coord ? 'target' : 'search')}<span><b>${esc(it.title)}</b><small>${esc(it.sub || '')}</small></span></button>`).join('')
-      : '<div class="sr-empty">نتیجه‌ای در تهران پیدا نشد</div>') + (src ? `<div class="sr-src">نتایج از ${SRC[src] || src}</div>` : '');
+      : `<div class="sr-empty">نتیجه‌ای در ${CITY.fa} پیدا نشد</div>`) + (src ? `<div class="sr-src">نتایج از ${SRC[src] || src}</div>` : '');
   };
   inp.addEventListener('input', () => {
     const q = inp.value.trim();
@@ -2545,12 +2555,12 @@ function openWelcome() {
   d.innerHTML = `<div class="dlg-body welcome">
     <div class="w-hero">
       <span class="brand-logo lg">${icon('board')}</span>
-      <div><h2>بیلبوردسنج</h2><p>انتخاب سازه تبلیغاتی در تهران با برآورد ترافیک، زمان مواجهه، ایمپرشن و قیمت بازار.</p></div>
+      <div><h2>بیلبوردسنج</h2><p>انتخاب سازه تبلیغاتی در ${CITY.fa} با برآورد ترافیک، زمان مواجهه، ایمپرشن و قیمت بازار.</p></div>
     </div>
     <div class="w-q">چه کاری می‌خواهید انجام دهید؟</div>
-    <div class="w-tasks">${Object.entries(TASKS).map(([k, g]) => `<button class="w-task" data-task="${k}"><span class="w-ic">${icon(g.icon)}</span><span><b>${g.t}</b><small>${g.d}</small></span></button>`).join('')}</div>
+    <div class="w-tasks">${Object.entries(TASKS).filter(([k]) => CITY.districts || k !== 'district').map(([k, g]) => `<button class="w-task" data-task="${k}"><span class="w-ic">${icon(g.icon)}</span><span><b>${g.t}</b><small>${g.d}</small></span></button>`).join('')}</div>
     <div class="w-facts">
-      <div><b>داده سازه‌ها</b><span>${M ? `${num(M.count)} سازه واقعی تهران از آگهی‌های عمومی اجاره بیلبورد` : 'فهرست سازه‌های واردشده'}${priceDate ? `؛ قیمت‌ها برداشت ${priceDate}` : ''}${DEMO ? '' : '؛ هر 7 روز به‌روز می‌شود'}. مکان بعضی سازه‌ها تقریبی است (حاشیه خط‌چین).</span></div>
+      <div><b>داده سازه‌ها</b><span>${M ? `${num(M.count)} سازه واقعی ${CITY.fa} از آگهی‌های عمومی اجاره بیلبورد` : 'فهرست سازه‌های واردشده'}${priceDate ? `؛ قیمت‌ها برداشت ${priceDate}` : ''}${DEMO ? '' : '؛ هر 7 روز به‌روز می‌شود'}. مکان بعضی سازه‌ها تقریبی است (حاشیه خط‌چین).</span></div>
       <div><b>ترافیک</b><span>${state.traffic?.items && Object.keys(state.traffic.items).length ? `الگوی ساعتی ترافیک و سرعت ${num(Object.keys(state.traffic.items).length)} سازه از API نشان، هر 7 روز به‌روز می‌شود؛ حجم تردد از تعداد خط و نوع معبر برآورد می‌شود.` : 'با مدل برآورد می‌شود: تعداد خط، نوع معبر، الگوی ساعتی ترافیک تهران و هندسه دید.'} اثر روزهای هفته و ماه‌های سال هم حساب می‌شود. عدد دقیق شمارش نیست.</span></div>
     </div>
     <dl class="w-gloss">
@@ -2576,7 +2586,7 @@ async function startTask(key) {
   if (key === 'district') {
     state.listTab = 'inventory'; state.scope.mode = 'district';
     setStructuresLayer(true); await setDistrictLayer(true);
-    map.setView(TEHRAN.center, TEHRAN.zoom);
+    map.setView(CITY.center, CITY.zoom);
     renderPanel(); rerank();
   } else if (key === 'plan') {
     state.listTab = 'inventory'; renderPanel(); openPlanner('plan');
@@ -2625,6 +2635,8 @@ function openHelp() {
       <li><b>انتخاب و اشتراک</b>: با تیک کنار هر هات‌اسپات چند تا را انتخاب کنید، فقط همان‌ها را روی نقشه نگه دارید، مختصاتشان را یک‌جا کپی کنید یا لینکش را برای همکار بفرستید. دکمه‌های «برای تبلیغ چه چیزی؟» نوع‌های مناسب هر دسته کالا را یک‌جا انتخاب می‌کنند. پاپ‌آپ هر هات‌اسپات سازه‌های داخل محدوده و سازه‌های مسیر رسیدن (تا 900 متر) را با امتیاز و قیمت نشان می‌دهد؛ «اوج حضور» الگوی معمول هر نوع مکان است، نه داده اندازه‌گیری‌شده.</li>
       <li>کامل بودن داده به ثبت مغازه‌ها در OpenStreetMap بستگی دارد؛ بعضی راسته‌ها کمتر از واقع دیده می‌شوند.</li>
     </ul>
+    <h3>7. شهرهای دیگر</h3>
+    <p>کرج، اصفهان، مشهد، شیراز، کرمان، یزد، ساری و گرگان از منوی شهر (کنار نام سایت) باز می‌شوند. هر شهر فهرست سازه‌ها، قیمت‌ها، نقاط ذخیره‌شده، هات‌اسپات‌ها و گفتگوی دستیار جدای خودش را دارد و همه امکانات تهران روی آن کار می‌کند. حجم تردد شهرها با مدل تهران × یک ضریب برآوردی حساب می‌شود (کرج و اصفهان 0.75، مشهد 0.8، شیراز 0.7، کرمان و یزد 0.55، ساری و گرگان 0.5) و الگوی ساعتی با داده نشان هر شهر به‌مرور جایگزین می‌شود. منبع آگهی‌ها برای کرمان، ساری و گرگان سازه کمی داخل شهر دارد («داده محدود»). یزد و گرگان مرز مناطق شهرداری در OpenStreetMap ندارند.</p>
     <h3>محدودیت‌ها</h3>
     <ul>
       <li>حجم تردد مدل‌سازی شده است؛ اگر آمار شمارش واقعی دارید، در «مشخصات معبر» وارد کنید تا جایگزین شود.</li>
@@ -2664,6 +2676,16 @@ function bindChrome() {
   $('#lyrHighways').addEventListener('change', e => toggleHighways(e.target.checked));
   $('#lyrStructures').addEventListener('change', e => setStructuresLayer(e.target.checked));
   $('#lyrDistricts').addEventListener('change', e => setDistrictLayer(e.target.checked));
+  if (!CITY.districts) $('#lyrDistricts').closest('.switch-row').hidden = true;
+  $('#lyrUnlock').checked = !!state.settings.unlockMove;
+  $('#lyrUnlock').addEventListener('change', e => { state.settings.unlockMove = e.target.checked; save(); unlockedIds.clear(); drawStructures(); toast(e.target.checked ? 'سازه‌ها آزادند؛ با کشیدن جابه‌جا می‌شوند' : 'سازه‌ها قفل شدند', 'ok'); });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act="unlock-move"]'); if (!b) return;
+    const id = b.dataset.id;
+    if (unlockedIds.has(id)) unlockedIds.delete(id); else unlockedIds.add(id);
+    map.closePopup(); drawStructures();
+    if (unlockedIds.has(id)) toast('این سازه آزاد شد؛ نشانگرش را بکشید و رها کنید', 'ok');
+  });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act="district-board"], [data-act="district-analyze"]');
     if (!b) return;
@@ -2696,6 +2718,32 @@ function bindChrome() {
     if (state.selectedId && !document.querySelector('dialog[open]')) backToList();
   });
   bindSearch();
+  initCitySwitcher();
+}
+
+// ── city switcher: each city is its own page (?city=slug); Tehran is the plain address ──
+function initCitySwitcher() {
+  const btn = $('#btnCity'), pop = $('#cityPop');
+  btn.firstChild.textContent = CITY.fa;
+  if (!IS_TEHRAN) document.title = document.title.replace('تهران', CITY.fa);
+  if (DEMO) { btn.disabled = true; btn.querySelector('svg')?.remove(); return; }
+  let manifest = null;
+  const render = () => {
+    pop.innerHTML = `<div class="pop-title">شهر</div>${CITY_SLUGS.map(slug => {
+      const c = CITIES[slug], m = slug === 'tehran' ? { ready: true } : manifest?.cities?.[slug];
+      const ready = !!m?.ready, cur = slug === CITY.slug;
+      const sub = slug === 'tehran' ? '' : !manifest ? '…' : ready ? `${num(m.count || 0)} سازه${c.limited ? ' · داده محدود' : ''}` : 'در حال آماده‌سازی';
+      return `<a class="city-row ${cur ? 'on' : ''} ${ready ? '' : 'off'}" ${ready && !cur ? `href="${cityUrl(slug)}"` : ''} aria-disabled="${!ready}"><b>${c.fa}</b><small>${sub}</small>${cur ? icon('check') : ''}</a>`;
+    }).join('')}<div class="city-foot">هر شهر فهرست سازه‌ها، قیمت‌ها و نقاط ذخیره‌شده جدای خودش را دارد.</div>`;
+  };
+  btn.addEventListener('click', async e => {
+    e.stopPropagation();
+    pop.hidden = !pop.hidden;
+    if (pop.hidden) return;
+    render();
+    if (!manifest) { try { manifest = await (await fetch('data/cities.json', { cache: 'no-cache' })).json(); } catch { manifest = { cities: {} }; } render(); }
+  });
+  document.addEventListener('click', e => { if (!e.target.closest('#cityPop, #btnCity')) pop.hidden = true; });
 }
 
 function setPanelSize(cls) {

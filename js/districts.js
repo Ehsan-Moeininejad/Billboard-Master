@@ -71,12 +71,21 @@ export function approximateDistricts() {
   });
 }
 
-/** Parse OSM relations (out geom) into district polygons. */
-export function parseOsmDistricts(res) {
+/**
+ * Parse OSM relations (out geom) into district polygons.
+ * Tehran (no options) is parsed exactly as before. Other cities pass { city: 'مشهد', box: [s,w,n,e] }: only
+ * «منطقه N» or «منطقه N شهرداری <city>» relations at municipal level whose centre lies in the city box count,
+ * so districts of neighbouring towns (فردیس، خمینی‌شهر…) and sub-districts (ناحیه) are left out.
+ */
+export function parseOsmDistricts(res, opts = null) {
   const out = [];
   for (const el of res.elements || []) {
     const name = el.tags?.name || '', en = el.tags?.['name:en'] || '';
-    const m = toLatin(name).match(/منطقه\s*(\d{1,2})/) || en.match(/District\s*(\d{1,2})/i);
+    let m;
+    if (opts) {
+      if (el.tags?.admin_level && el.tags.admin_level !== '9') continue;
+      m = toLatin(name).replace(/\s+/g, ' ').trim().match(new RegExp(`^منطقه ?(\\d{1,2})(?: شهرداری ${opts.city})?$`));
+    } else m = toLatin(name).match(/منطقه\s*(\d{1,2})/) || en.match(/District\s*(\d{1,2})/i);
     if (!m) continue;
     const n = +m[1];
     if (n < 1 || n > 22) continue;
@@ -98,8 +107,15 @@ export function parseOsmDistricts(res) {
       if (ring.length > 3) rings.push(ring);
     }
     if (!rings.length) continue;
-    const c = DISTRICT_CENTERS.find(x => x.n === n);
     rings.sort((a, b) => b.length - a.length);
+    if (opts) {
+      const r0 = rings[0], center = [r0.reduce((s, p) => s + p[0], 0) / r0.length, r0.reduce((s, p) => s + p[1], 0) / r0.length];
+      const [s, w, n2, e] = opts.box;
+      if (center[0] < s || center[0] > n2 || center[1] < w || center[1] > e) continue;
+      out.push({ n, fa: '', poly: r0, rings, approx: false, center });
+      continue;
+    }
+    const c = DISTRICT_CENTERS.find(x => x.n === n);
     out.push({ n, fa: c?.fa || '', poly: rings[0], rings, approx: false, center: [c.lat, c.lng] });
   }
   // keep one entry per district number
@@ -118,3 +134,5 @@ export const OSM_DISTRICT_QUERY = (() => {
   const [[s, w], [n, e]] = TEHRAN.bounds;
   return `[out:json][timeout:60];rel["boundary"="administrative"]["name"~"منطقه|District"](${s},${w},${n},${e});out geom;`;
 })();
+/** the same query for another city's box [s,w,n,e] */
+export const districtQuery = box => `[out:json][timeout:90];rel["boundary"="administrative"]["name"~"منطقه"](${box.join(',')});out geom;`;

@@ -52,7 +52,8 @@
     <div class="brand" title="بیلبوردسنج">
       <span class="brand-logo"><svg><use href="#i-board"/></svg></span>
       <span class="brand-name">بیلبوردسنج</span>
-      <span class="brand-city">تهران</span>
+      <button class="brand-city" id="btnCity" aria-label="انتخاب شهر" aria-haspopup="true">تهران<svg><use href="#i-chev"/></svg></button>
+      <div class="city-pop" id="cityPop" hidden></div>
     </div>
     <div class="search" role="search">
       <svg class="search-ic"><use href="#i-search"/></svg>
@@ -82,6 +83,7 @@
       <label class="switch-row"><input type="checkbox" id="lyrDistricts"><span class="switch"></span><span><b>مناطق شهرداری</b><small>22 منطقه تهران؛ کلیک روی منطقه، سازه‌هایش را نشان می‌دهد</small></span></label>
       <label class="switch-row"><input type="checkbox" id="lyrHot"><span class="switch"></span><span><b>هات‌اسپات‌ها</b><small>مال، راسته خرید، بورس کالا، رستوران‌ها، مترو؛ فیلترها با دکمه شعله</small></span></label>
       <label class="switch-row"><input type="checkbox" id="lyrStructures"><span class="switch"></span><span><b>سازه‌های موجود</b><small>سازه‌های واقعی بازار و فهرست شما (+ پل‌های OSM در زوم 14+)</small></span></label>
+      <label class="switch-row"><input type="checkbox" id="lyrUnlock"><span class="switch"></span><span><b>اجازه جابه‌جا کردن سازه‌ها</b><small>خاموش = سازه‌ها قفل‌اند و با لمس یا کشیدن نقشه جابه‌جا نمی‌شوند</small></span></label>
     </div>
     <div class="layers-pop hot-pop" id="hotPop" hidden></div>
   </div>

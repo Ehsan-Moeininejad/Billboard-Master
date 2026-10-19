@@ -1,6 +1,9 @@
 // Exposure & impression model. Pure functions — no DOM, no network.
 import { ROAD_CLASSES, FORMATS, HOURLY_SHARE, SPEED_RATIO, ATTENTION_TAU, WEEK, VIS } from './config.js';
 import { compassFa, arrow, nearestOnLine, sightline } from './geo.js';
+import { CITY, IS_TEHRAN } from './city.js';
+// outside Tehran the same road carries less traffic; first estimate per city (1 in Tehran)
+const CITY_VOLF = CITY.volF || 1;
 
 const LANE_HOUR_CAP = { motorway: 1900, trunk: 1700, primary: 950, secondary: 800, tertiary: 650,
   motorway_link: 1500, trunk_link: 1300, primary_link: 800 };
@@ -154,7 +157,7 @@ export function estimate(site, settings, dayType = 'weekday') {
   const hourly = Array.from({ length: 24 }, (_, h) => ({ h, vehicles: 0, ots: 0, impressions: 0, speed: 0, exposure: 0 }));
   const dirs = facing.map((d, k) => {
     const win = geo[k].window;
-    const daily = (ov.dailyVolume ? ov.dailyVolume / facing.length : d.lanes * cls.laneDaily) * adj.volF;
+    const daily = (ov.dailyVolume ? ov.dailyVolume / facing.length : d.lanes * cls.laneDaily * CITY_VOLF) * adj.volF;
     const cap = d.lanes * (LANE_HOUR_CAP[r.cls] || 900);
     // demand per hour, capped by capacity with spill-over into the following hours
     const vol = new Array(24).fill(0);
@@ -216,7 +219,7 @@ export function summarize(site, settings) {
 
   const score = scoreFrom(wk.daily);
 
-  let confidence = 1; const sources = ['مدل ترافیک تهران', 'OpenStreetMap'];
+  let confidence = 1; const sources = [IS_TEHRAN ? 'مدل ترافیک تهران' : `مدل ترافیک تهران × ضریب برآوردی ${CITY.fa} (${CITY_VOLF})`, 'OpenStreetMap'];
   if (site.road.lanes?.total || site.road.lanes?.fwd) confidence++;
   if (site.live?.traffic) { confidence++; sources.push('الگوی ترافیک نشان'); }
   if (site.live?.speed) { confidence++; sources.push(site.live.speed.provider === 'mapir' ? 'سرعت مسیر Map.ir' : 'سرعت معمول نشان'); }

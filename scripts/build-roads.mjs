@@ -4,13 +4,22 @@
 //   data/hotspots.json   — places where people gather (malls, shopping/trade streets, food, metro…), see js/hotspots.js
 // Run at deploy time by .github/workflows/pages.yml and before the weekly market build.
 // If Overpass is down the previous files (if any) are kept and the app falls back to live queries.
-import { writeFileSync } from 'node:fs';
+// With --city=<slug> the same files are built for another city into data/cities/<slug>/ (see js/cities.js).
+import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { CITIES, cityDir } from '../js/cities.js';
 import { OVERPASS_ENDPOINTS } from '../js/config.js';
 import { shapeWay } from '../js/net.js';
-import { OSM_DISTRICT_QUERY, parseOsmDistricts } from '../js/districts.js';
+import { OSM_DISTRICT_QUERY, parseOsmDistricts, districtQuery } from '../js/districts.js';
 import { HOTSPOT_QUERY, HOTSPOT_BBOX, buildHotspots, roadNamer } from '../js/hotspots.js';
 
-const BBOX = [35.55, 51.10, 35.85, 51.65];
+const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran').slice(7);
+if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
+const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
+mkdirSync(DIR, { recursive: true });
+const BBOX = IS_TEHRAN ? [35.55, 51.10, 35.85, 51.65] : CITY.box;
+const result = { city: SLUG, roads: null, districts: null, hotspots: null };
+// other cities' files are committed to the repo: skip the write when only the timestamp would change
+const same = (file, key, value) => { if (IS_TEHRAN || !existsSync(file)) return false; try { return JSON.stringify(JSON.parse(readFileSync(file, 'utf8'))[key]) === JSON.stringify(value); } catch { return false; } };
 const CLASSES = ['motorway', 'trunk', 'primary', 'secondary', 'motorway_link', 'trunk_link'];
 
 async function overpass(q, tries = 2) {
@@ -56,23 +65,24 @@ try {
   const shaped = (res.elements || []).filter(e => e.type === 'way' && e.geometry?.length > 1).map(shapeWay);
   plainRoads = shaped.map(w => ({ name: w.name, line: w.line }));
   const ways = shaped.map(({ nameEn, ref, snap, ...w }) => ({ ...w, line: pack(w.line) }));
-  if (ways.length < 500) throw new Error(`only ${ways.length} roads returned`);
-  writeFileSync('data/roads.json', JSON.stringify({ updatedAt: new Date().toISOString(), bbox: BBOX, classes: CLASSES, ways }));
-  console.log(`roads: ${ways.length}`);
+  if (ways.length < (IS_TEHRAN ? 500 : 60)) throw new Error(`only ${ways.length} roads returned`);
+  if (!same(`${DIR}/roads.json`, 'ways', ways)) writeFileSync(`${DIR}/roads.json`, JSON.stringify({ updatedAt: new Date().toISOString(), bbox: BBOX, classes: CLASSES, ways }));
+  console.log(`roads: ${ways.length}`); result.roads = ways.length;
 } catch (e) { ok = false; console.warn('roads not rebuilt:', e.message); }
 
-try {
-  const d = parseOsmDistricts(await overpass(OSM_DISTRICT_QUERY));
-  if (d.length >= 15) { writeFileSync('data/districts.json', JSON.stringify(d)); console.log(`districts: ${d.length}`); }
+if (CITY.districts) try {
+  const d = IS_TEHRAN ? parseOsmDistricts(await overpass(OSM_DISTRICT_QUERY)) : parseOsmDistricts(await overpass(districtQuery(CITY.box)), { city: CITY.fa, box: CITY.box });
+  if (d.length >= (CITY.minDistricts || 15)) { writeFileSync(`${DIR}/districts.json`, JSON.stringify(d)); console.log(`districts: ${d.length}`); result.districts = d.length; }
   else console.warn(`districts: only ${d.length}, keeping fallback`);
 } catch (e) { console.warn('districts not rebuilt:', e.message); }
 
 try {
-  const osm = await overpassTiled(b => HOTSPOT_QUERY.replaceAll(HOTSPOT_BBOX.join(','), b.join(',')), HOTSPOT_BBOX);
+  const osm = await overpassTiled(b => HOTSPOT_QUERY.replaceAll(HOTSPOT_BBOX.join(','), b.join(',')), IS_TEHRAN ? HOTSPOT_BBOX : CITY.box);
   const items = buildHotspots(osm, { roadName: roadNamer(plainRoads) });
-  if (items.length < 100) throw new Error(`only ${items.length} hotspots`);
-  writeFileSync('data/hotspots.json', JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
-  console.log(`hotspots: ${items.length}`);
+  if (items.length < (IS_TEHRAN ? 100 : 15)) throw new Error(`only ${items.length} hotspots`);
+  if (!same(`${DIR}/hotspots.json`, 'items', items)) writeFileSync(`${DIR}/hotspots.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
+  console.log(`hotspots: ${items.length}`); result.hotspots = items.length;
 } catch (e) { console.warn('hotspots not rebuilt:', e.message); }
 
+try { mkdirSync('.cache', { recursive: true }); writeFileSync(`.cache/build-${SLUG}.json`, JSON.stringify(result)); } catch { /* report only */ }
 if (!ok) process.exitCode = 0; // never fail the deploy because of Overpass

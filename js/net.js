@@ -1,8 +1,11 @@
 // Network layer: raw calls to OpenStreetMap, Neshan and Map.ir.
 // Failover between providers lives in providers.js; the demo build swaps this file for demo/net.js.
-import { OVERPASS_ENDPOINTS, ROAD_CLASSES, ROAD_QUERY, TEHRAN, NESHAN_COLOR_RATIO } from './config.js';
+import { OVERPASS_ENDPOINTS, ROAD_CLASSES, ROAD_QUERY, NESHAN_COLOR_RATIO } from './config.js';
+import { CITY, IS_TEHRAN, dataPath } from './city.js';
+// the city on screen (identical to the old TEHRAN constant when the page shows Tehran)
+const TEHRAN = CITY;
 import { nearestOnLine, walk, bearing } from './geo.js';
-import { OSM_DISTRICT_QUERY, parseOsmDistricts } from './districts.js';
+import { OSM_DISTRICT_QUERY, parseOsmDistricts, districtQuery } from './districts.js';
 
 async function fetchJSON(url, opts = {}, timeout = 20000) {
   const ctl = new AbortController();
@@ -74,7 +77,7 @@ export function shapeWay(e) {
  */
 export async function staticRoads() {
   try {
-    const d = await fetchJSON('data/roads.json', {}, 30000);
+    const d = await fetchJSON(dataPath('roads.json'), {}, 30000);
     if (!d?.ways?.length) return null;
     const ways = d.ways.map(w => ({ ...w, nameEn: '', ref: '', snap: null, line: unpack(w.line) }));
     return { bbox: d.bbox, classes: d.classes, ways, updatedAt: d.updatedAt };
@@ -279,8 +282,10 @@ export function parseAnalytics(r) {
 /** Tehran's municipal districts from OSM (null if fewer than 15 come back). */
 export async function districts() {
   // prebuilt at deploy time by scripts/build-roads.mjs; live Overpass only as a fallback
-  try { const d = await fetchJSON('data/districts.json', {}, 15000); if (Array.isArray(d) && d.length >= 15) return d; } catch { /* fall back */ }
-  const res = await overpass(OSM_DISTRICT_QUERY, 65000);
-  const d = parseOsmDistricts(res);
-  return d.length >= 15 ? d : null;
+  const min = CITY.minDistricts || 15;
+  if (!CITY.districts) return null;
+  try { const d = await fetchJSON(dataPath('districts.json'), {}, 15000); if (Array.isArray(d) && d.length >= min) return d; } catch { /* fall back */ }
+  const res = await overpass(IS_TEHRAN ? OSM_DISTRICT_QUERY : districtQuery(CITY.box), 65000);
+  const d = IS_TEHRAN ? parseOsmDistricts(res) : parseOsmDistricts(res, { city: CITY.fa, box: CITY.box });
+  return d.length >= min ? d : null;
 }
