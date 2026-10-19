@@ -5,6 +5,9 @@
 //                               that came without coordinates, from OpenStreetMap (build-roads.mjs --city=…)
 //                               and Neshan traffic for those two (update-traffic.mjs --city=…, NESHAN_CITY_CALLS each)
 //                               → each city's heavy data is refreshed about once a month; cities never built go first
+//   every week, every city      places from Neshan's search (update-pois.mjs, NESHAN_POI_CALLS per city), hotspots
+//                               rebuilt from OpenStreetMap + those places (hotspot-build.mjs), and for cities marked
+//                               «zones» the municipal districts from Neshan (update-zones.mjs, NESHAN_ZONE_CALLS)
 //   CITIES_ALL=1                build everything for every city now (first setup, or after a long outage)
 //
 // Each city runs on its own; a failure in one city is reported and the others carry on.
@@ -58,15 +61,40 @@ if (retry.length) {
   for (const slug of retry) if (!(await buildHeavy(slug, report.cities[slug], state[slug])) && !report.cities[slug].errors.length) report.cities[slug].errors.push('OpenStreetMap جواب نداد؛ داده قبلی ماند');
 }
 
+// 2) every city, every week: places from Neshan's search (a share of the city per run), hotspots rebuilt from
+//    OpenStreetMap + Neshan places, and municipal districts from Neshan where OpenStreetMap lacks them
+for (const slug of OTHER_CITIES) {
+  const r = report.cities[slug], st = state[slug];
+  if (process.env.NESHAN_KEY) {
+    try {
+      run(['scripts/update-pois.mjs', `--city=${slug}`], 25);
+      const p = readJSON(`.cache/pois-run-${slug}.json`, {});
+      r.steps.places = p.mode || 'ok'; r.places = p.items ?? null; r.placesLeft = p.left ?? null;
+      if (p.stop) r.errors.push(`جستجوی نشان: ${p.stop}`);
+    } catch (e) { r.errors.push('مکان‌های نشان'); console.warn(slug, 'update-pois', e.message); }
+    if (CITIES[slug].zones) try {
+      run(['scripts/update-zones.mjs', `--city=${slug}`], 20);
+      const z = readJSON(`.cache/zones-run-${slug}.json`, {});
+      r.steps.zones = z.mode || 'ok';
+      if (z.stop) r.errors.push(`مناطق از نشان: ${z.stop}`);
+    } catch (e) { r.errors.push('مناطق از نشان'); console.warn(slug, 'update-zones', e.message); }
+  }
+  try {
+    run(['scripts/hotspot-build.mjs', `--city=${slug}`], 5);
+    const h = readJSON(`.cache/hotspots-run-${slug}.json`, null);
+    if (h) { r.hotspots = h.items; r.neshanPlaces = h.neshan; st.hotspotsAt = new Date().toISOString(); }
+  } catch (e) { console.warn(slug, 'hotspot-build', e.message); }
+}
+
 for (const slug of OTHER_CITIES) {
   const dir = cityDir(slug), r = report.cities[slug], st = state[slug];
-  // 2) structures and prices (every week; without a road file listings are placed by their own coordinates)
+  // 3) structures and prices (every week; without a road file listings are placed by their own coordinates)
   try {
     run(['scripts/build-market.mjs', ...(LISTINGS ? [LISTINGS] : []), `--city=${slug}`], 10);
     r.steps.market = 'ok'; st.marketAt = new Date().toISOString();
     r.byAddress = readJSON(`${dir}/market.json`)?.stats?.byAddress ?? null; // listings placed from their address
   } catch (e) { r.errors.push('فهرست سازه‌ها'); console.warn(slug, 'build-market', e.message); }
-  // 3) Neshan traffic for the cities in this week's rotation (not again within 6 days, so a re-run costs no quota)
+  // 4) Neshan traffic for the cities in this week's rotation (not again within 6 days, so a re-run costs no quota)
   const fresh = st.trafficAt && Date.now() - new Date(st.trafficAt).getTime() < 6 * 864e5;
   if (heavy.includes(slug) && !fresh && process.env.NESHAN_KEY && existsSync(`${dir}/market.json`) && existsSync(`${dir}/roads.json`)) {
     try {

@@ -8,6 +8,7 @@
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { CITIES, cityDir, cityArea } from '../js/cities.js';
 import { gazetteerQuery, buildGazetteer } from './geocode.mjs';
+import { compactOsm, buildCityHotspots } from './hotspot-build.mjs';
 import { OVERPASS_ENDPOINTS } from '../js/config.js';
 import { shapeWay } from '../js/net.js';
 import { OSM_DISTRICT_QUERY, parseOsmDistricts, districtQuery } from '../js/districts.js';
@@ -79,17 +80,31 @@ try {
 
 if (CITY.districts) try {
   const d = IS_TEHRAN ? parseOsmDistricts(await overpass(OSM_DISTRICT_QUERY)) : parseOsmDistricts(await overpass(districtQuery(CITY.box)), { city: CITY.fa, box: CITY.box });
-  if (d.length >= (CITY.minDistricts || 15)) { writeFileSync(`${DIR}/districts.json`, JSON.stringify(d)); console.log(`districts: ${d.length}`); result.districts = d.length; }
+  // other cities: districts traced from Neshan (update-zones.mjs) stay when OpenStreetMap has fewer of them
+  const cur = IS_TEHRAN ? null : (() => { try { return JSON.parse(readFileSync(`${DIR}/districts.json`, 'utf8')); } catch { return null; } })();
+  const keepNeshan = Array.isArray(cur) && cur[0]?.src === 'neshan' && cur.length > d.length;
+  if (keepNeshan) console.log(`districts: OpenStreetMap has ${d.length}, keeping ${cur.length} from Neshan`);
+  else if (d.length >= (CITY.minDistricts || 15)) { writeFileSync(`${DIR}/districts.json`, JSON.stringify(d)); console.log(`districts: ${d.length}`); result.districts = d.length; }
   else console.warn(`districts: only ${d.length}, keeping fallback`);
 } catch (e) { console.warn('districts not rebuilt:', e.message); }
 
 try {
   const osm = await overpassTiled(b => HOTSPOT_QUERY.replaceAll(HOTSPOT_BBOX.join(','), b.join(',')), IS_TEHRAN ? HOTSPOT_BBOX : CITY.box);
-  const items = buildHotspots(osm, { roadName: roadNamer(plainRoads), relative: !IS_TEHRAN });
-  if (items.scale) console.log('density scale vs Tehran:', JSON.stringify(items.scale));
-  if (items.length < (IS_TEHRAN ? 100 : 15)) throw new Error(`only ${items.length} hotspots`);
-  if (!same(`${DIR}/hotspots.json`, 'items', items)) writeFileSync(`${DIR}/hotspots.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
-  console.log(`hotspots: ${items.length}`); result.hotspots = items.length;
+  if (!IS_TEHRAN) {
+    // other cities: keep the places themselves (osm-pois.json) so hotspots can be rebuilt every week with Neshan's
+    // places (scripts/hotspot-build.mjs) without asking OpenStreetMap again
+    const elements = compactOsm(osm);
+    if (elements.length < 200) throw new Error(`only ${elements.length} places returned`);
+    if (!same(`${DIR}/osm-pois.json`, 'elements', elements)) writeFileSync(`${DIR}/osm-pois.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', elements }));
+    const r = buildCityHotspots(SLUG, { osm: { elements }, roads: plainRoads.length ? plainRoads : null });
+    result.hotspots = r.items; result.neshanPlaces = r.neshan;
+  } else {
+    const items = buildHotspots(osm, { roadName: roadNamer(plainRoads), relative: !IS_TEHRAN });
+    if (items.scale) console.log('density scale vs Tehran:', JSON.stringify(items.scale));
+    if (items.length < (IS_TEHRAN ? 100 : 15)) throw new Error(`only ${items.length} hotspots`);
+    if (!same(`${DIR}/hotspots.json`, 'items', items)) writeFileSync(`${DIR}/hotspots.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
+    console.log(`hotspots: ${items.length}`); result.hotspots = items.length;
+  }
 } catch (e) { console.warn('hotspots not rebuilt:', e.message); }
 
 // other cities: named streets, squares, neighbourhoods and landmarks, so build-market.mjs can place listings

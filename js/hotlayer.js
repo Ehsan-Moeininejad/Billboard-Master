@@ -125,7 +125,7 @@ export function createHotspots(ctx) {
     H.status = 'loading'; renderPop();
     try {
       const r = await fetch(dataPath('hotspots.json'), { cache: 'no-cache' });
-      if (r.ok) { const d = await r.json(); if (d.items?.length) { set(d.items, 'build', d.updatedAt); return H.items; } }
+      if (r.ok) { const d = await r.json(); if (d.items?.length) { H.dataSource = d.source || ''; set(d.items, 'build', d.updatedAt); return H.items; } }
     } catch { /* no prebuilt file — fall back below */ }
     const c = store.get(CACHE_KEY);
     if (c?.items?.length && Date.now() - c.at < CACHE_DAYS * 864e5) { set(c.items, 'cache', new Date(c.at).toISOString()); return H.items; }
@@ -299,7 +299,7 @@ export function createHotspots(ctx) {
       <div class="hs-selbar" id="hsSel"></div>
       <div class="hs-export"><span>خروجی همه هات‌اسپات‌های فیلترشده (نه فقط انتخاب‌شده‌ها)</span><div>
         <button data-hs="exp" data-f="csv">${icon('download')} CSV</button><button data-hs="exp" data-f="geojson">${icon('download')} GeoJSON</button><button data-hs="exp" data-f="kml">${icon('download')} KML</button></div></div>
-      <div class="hs-foot">از نقاط ثبت‌شده در OpenStreetMap؛ شکل هر هات‌اسپات همان محدوده‌ای است که مراکزش پوشش می‌دهند (اگر تجمع تکه‌تکه باشد، چند بخش جدا) و پتانسیل، اندازه، تمرکز و نوع مکان را با هم می‌سنجد.${H.updatedAt ? ` به‌روزرسانی: ${new Date(H.updatedAt).toLocaleDateString('fa-IR-u-nu-latn')}` : ''}</div>`;
+      <div class="hs-foot">از نقاط ثبت‌شده در OpenStreetMap${/Neshan/.test(H.dataSource || '') ? ' و جستجوی نشان' : ''}؛ شکل هر هات‌اسپات همان محدوده‌ای است که مراکزش پوشش می‌دهند (اگر تجمع تکه‌تکه باشد، چند بخش جدا) و پتانسیل، اندازه، تمرکز و نوع مکان را با هم می‌سنجد.${H.updatedAt ? ` به‌روزرسانی: ${new Date(H.updatedAt).toLocaleDateString('fa-IR-u-nu-latn')}` : ''}</div>`;
     renderList(); renderSel();
   }
   function presetOn(p) {
