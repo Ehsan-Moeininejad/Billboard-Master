@@ -337,7 +337,7 @@ export function buildHotspots(osm, { roadName = () => '', relative = false } = {
   // scale factors (1 in Tehran): sR for shops and trade streets, sF for food, sA for offices and clinics
   let sR = 1, sF = 1;
   if (relative) {
-    const shopsR = pois.filter(p => p.t.shop && RETAIL.has(p.t.shop)), foodR = pois.filter(p => FOOD.has(p.t.amenity));
+    const shopsR = pois.filter(p => p.t.shop && RETAIL.has(p.t.shop)), foodR = pois.filter(p => FOOD.has(p.t.amenity) || ['coffee', 'pastry', 'confectionery', 'ice_cream'].includes(p.t.shop));
     sR = clamp(clusterP90(shopsR, 120) / TEHRAN_P90.retail, 0.3, 1) || 0.3;
     sF = clamp(clusterP90(foodR, 150) / TEHRAN_P90.food, 0.3, 1) || 0.3;
   }
@@ -386,11 +386,13 @@ export function buildHotspots(osm, { roadName = () => '', relative = false } = {
   }
 
   // 4) food clusters
-  const food = pois.filter(p => FOOD.has(p.t.amenity));
+  // other cities: coffee, pastry and sweet shops also count — fewer cafés are mapped there, and these sit on the same streets
+  const FOOD_SHOP = new Set(['coffee', 'pastry', 'confectionery', 'ice_cream']);
+  const food = pois.filter(p => FOOD.has(p.t.amenity) || (relative && FOOD_SHOP.has(p.t.shop)));
   peaks(food, { r0: 120, min: atLeast(8, sF, 4), rMax: 380, rMin: 100, grow: 80 }).forEach(c => {
     const st = modeOf(c.members.map(p => p.street));
     push({ _m: c.members, t: 'food', place: streetLabel(st) || roadName(c), lat: c.lat, lng: c.lng, r: c.r, n: c.n, size: c.n,
-      mix: topKinds(c.members, p => ({ restaurant: 'رستوران', fast_food: 'فست‌فود', cafe: 'کافه', food_court: 'فودکورت', ice_cream: 'بستنی', juice_bar: 'آبمیوه' })[p.t.amenity]) });
+      mix: topKinds(c.members, p => ({ restaurant: 'رستوران', fast_food: 'فست‌فود', cafe: 'کافه', food_court: 'فودکورت', ice_cream: 'بستنی', juice_bar: 'آبمیوه' })[p.t.amenity] || ({ coffee: 'قهوه', pastry: 'شیرینی', confectionery: 'شیرینی', ice_cream: 'بستنی' })[p.t.shop]) });
   });
 
   // 5) entertainment & culture
@@ -505,7 +507,18 @@ export function buildHotspots(osm, { roadName = () => '', relative = false } = {
     h.mixed = overlap;
   });
 
-  for (let i = out.length - 1; i >= 0; i--) if (out[i].score < 25) out.splice(i, 1);
+  for (let i = out.length - 1; i >= 0; i--) if (out[i].score < (relative ? 15 : 25)) out.splice(i, 1);
+  // other cities: the level is judged within the city — in each type the top fifth is «خیلی زیاد» and the next
+  // three tenths at least «زیاد», so a smaller city still shows its own strongest places (Tehran unchanged)
+  if (relative) {
+    const byT = {};
+    out.forEach(h => (byT[h.t] ||= []).push(h));
+    Object.values(byT).forEach(arr => {
+      if (arr.length < 3) return;
+      arr.sort((a, b) => b.score - a.score || b.mixed - a.mixed || b.n - a.n);
+      arr.forEach((h, i) => { const q = i / arr.length; if (q < 0.2) h.lvl = 3; else if (q < 0.5) h.lvl = Math.max(h.lvl, 2); });
+    });
+  }
   out.forEach((h, i) => { h.lat = +h.lat.toFixed(5); h.lng = +h.lng.toFixed(5); h.r = Math.round(h.r); h.n = Math.round(h.n); delete h.size; h.id = `h${i}`; });
   out.sort((a, b) => b.score - a.score);
   if (relative) out.scale = { retail: +sR.toFixed(2), food: +sF.toFixed(2) };

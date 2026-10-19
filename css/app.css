@@ -767,6 +767,10 @@ table.board-tbl td.rd { max-width: 150px; overflow: hidden; text-overflow: ellip
 .hs-type { display: inline-flex; align-items: center; gap: 6px; border: 1.5px solid var(--line-2); border-radius: 99px; padding: 3px 10px 3px 8px; font-size: 12.5px; color: var(--muted); background: var(--surface); }
 .hs-type i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); opacity: .35; }
 .hs-type small { font-size: 11px; color: var(--muted); }
+.hs-type small.hs-hid, .hs-subs small.hs-hid { opacity: .55; }
+.hs-type small.hs-hid { margin-right: 1px; }
+.hs-subs small.hs-hid { margin-right: 4px; }
+.hs-seg small { opacity: .6; font-size: 10.5px; }
 .hs-type.on { border-color: var(--c); color: var(--text); background: color-mix(in srgb, var(--c) 12%, transparent); }
 .hs-type.on i { opacity: 1; }
 .hs-subs { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; padding: 8px; border-radius: 10px; background: var(--surface-2); }

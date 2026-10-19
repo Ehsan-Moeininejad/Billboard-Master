@@ -11,14 +11,17 @@
 //     (at the named cross street / landmark when it can be found) and marked as approximate
 //   • price history (data/price-history.csv) and change since the previous run
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
-import { CITIES, cityDir, ELSEWHERE } from '../js/cities.js';
+import { CITIES, cityDir, cityArea, ELSEWHERE } from '../js/cities.js';
+import { makeGeocoder } from './geocode.mjs';
 
 // --city=<slug> builds another city into data/cities/<slug>/; without it everything below is Tehran, unchanged
 const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran').slice(7);
 if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
 const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
 const SRC = process.argv.slice(2).find(a => !a.startsWith('--')) || 'https://raw.githubusercontent.com/alireza-zareian/Rasamap-Repository/main/scraper/data/billboards.json';
-const BOX = IS_TEHRAN ? { s: 35.55, w: 51.10, n: 35.85, e: 51.65 } : { s: CITY.box[0], w: CITY.box[1], n: CITY.box[2], e: CITY.box[3] };
+// other cities: the whole map frame (ring roads, entry roads and suburbs carry billboards too)
+const AREA = IS_TEHRAN ? null : cityArea(SLUG);
+const BOX = IS_TEHRAN ? { s: 35.55, w: 51.10, n: 35.85, e: 51.65 } : { s: AREA[0], w: AREA[1], n: AREA[2], e: AREA[3] };
 
 // ── geometry helpers (planar, metres) ──────────────────────
 const R = 6371008.8, rad = d => d * Math.PI / 180;
@@ -120,7 +123,16 @@ const inBox = x => x.lat > BOX.s && x.lat < BOX.n && x.lng > BOX.w && x.lng < BO
 const nearBox = x => x.lat > BOX.s - 0.08 && x.lat < BOX.n + 0.08 && x.lng > BOX.w - 0.1 && x.lng < BOX.e + 0.1;
 // addresses that place the board outside the city even when the named freeway enters Tehran
 const OUTSIDE = IS_TEHRAN ? /(چالوس|مرزن|تونل|سنگان|کرج|شهریار|اسلامشهر|لواسان|دماوند|رودهن|فشم|پرند|قزوین|اصفهان|شیراز|مشهد|تبریز|قم|کیش|رشت|ساری)/
-  : new RegExp(`(${ELSEWHERE.filter(w => w !== CITY.fa && w !== 'تهران').join('|')})`);
+  : new RegExp(`(${ELSEWHERE.filter(w => w !== CITY.fa && w !== 'تهران' && !(CITY.suburbs || []).includes(w)).join('|')})`);
+// other cities: listings without usable coordinates are placed from their address (streets, squares, landmarks)
+const geocode = (() => {
+  if (IS_TEHRAN || !existsSync(`${DIR}/gazetteer.json`)) return null;
+  try {
+    const gz = JSON.parse(readFileSync(`${DIR}/gazetteer.json`, 'utf8')).places || [];
+    return gz.length ? makeGeocoder(gz, { cityName: CITY.fa, inArea: ([la, ln]) => la > BOX.s && la < BOX.n && ln > BOX.w && ln < BOX.e }) : null;
+  } catch (e) { console.warn('gazetteer unreadable:', e.message); return null; }
+})();
+if (!IS_TEHRAN) console.log(geocode ? 'address placement: on' : 'address placement: off (no gazetteer yet)');
 const tehran = raw.filter(x => CITY.sources.includes(x.city) || (x.lat && inBox(x))); // (named for Tehran; holds this city's listings)
 
 // listings that share one coordinate with many others got a city-level fallback from the geocoder
@@ -130,7 +142,7 @@ tehran.forEach(x => { if (x.lat) { const k = `${x.lat.toFixed(4)},${x.lng.toFixe
 const TYPE = { billboard: 'bulletin', bridge: 'bridge', station: 'poster', digital: 'digital', led: 'digital', mall: 'poster', rooftop: 'rooftop' };
 const prev = existsSync(`${DIR}/market.json`) ? JSON.parse(readFileSync(`${DIR}/market.json`, 'utf8')) : { items: [] };
 const prevById = new Map((prev.items || []).map(x => [x.id, x]));
-const stats = { total: 0, ok: 0, moved: 0, onRoad: 0, unknown: 0, noCoords: 0, outside: 0 };
+const stats = { total: 0, ok: 0, moved: 0, onRoad: 0, unknown: 0, noCoords: 0, outside: 0, ...(IS_TEHRAN ? {} : { byAddress: 0 }) };
 const items = [];
 for (const x of tehran) {
   const text = `${x.name} ${x.location}`;
@@ -138,6 +150,11 @@ for (const x of tehran) {
   const fallback = lat && counts.get(`${lat.toFixed(4)},${lng.toFixed(4)}`) >= 3;
   if (lat && !fallback && !nearBox({ lat, lng })) { stats.outside++; continue; }
   if (OUTSIDE.test(text) && !(lat && !fallback && inBox({ lat, lng }))) { stats.outside++; continue; }
+  // other cities: no coordinates (or the geocoder's city-level fallback) → read the address
+  if (geocode && (!lat || fallback)) {
+    const g = geocode(text);
+    if (g) { lat = g.lat; lng = g.lng; stats.byAddress++; stats.total++; pushItem(x, lat, lng, 'address', `نزدیک ${g.via}`); continue; }
+  }
   const road = namedRoad(text);
   if (road) {
     const near = lat && !fallback ? Math.min(...road.lines.map(l => nearestOn([lat, lng], l).d)) : Infinity;
@@ -155,6 +172,9 @@ for (const x of tehran) {
   // listings tagged «تهران» that actually sit in Karaj, the Chalus road, Isfahan…
   if (!inBox({ lat, lng })) { stats.outside++; continue; }
   stats.total++; stats[loc === 'source' ? 'ok' : loc === 'moved' ? 'moved' : 'onRoad']++;
+  pushItem(x, lat, lng, loc, note);
+}
+function pushItem(x, lat, lng, loc, note) {
   const id = `rs-${x.id}`;
   const price = x.price ? Math.round(x.price * 1e6) : null;
   const p = prevById.get(id);

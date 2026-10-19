@@ -132,7 +132,7 @@ export function createHotspots(ctx) {
     try {
       H.status = 'building'; renderPop();
       const osm = await overpass(CITY_QUERY);
-      const items = buildHotspots(osm);
+      const items = buildHotspots(osm, { relative: !IS_TEHRAN });
       store.set(CACHE_KEY, { at: Date.now(), items });
       set(items, 'live', new Date().toISOString());
     } catch (e) {
@@ -267,8 +267,12 @@ export function createHotspots(ctx) {
   // ── panel ───────────────────────────────────────────────────
   function counts() {
     const c = {}; (H.items || []).filter(h => h.lvl >= pref.min).forEach(h => { c[h.t] = (c[h.t] || 0) + 1; if (h.t === 'bourse') c['b:' + h.sub] = (c['b:' + h.sub] || 0) + 1; });
+    // all levels, so a chip can say how many more the «minimum potential» filter is hiding
+    const all = {}; (H.items || []).forEach(h => { all[h.t] = (all[h.t] || 0) + 1; if (h.t === 'bourse') all['b:' + h.sub] = (all['b:' + h.sub] || 0) + 1; });
+    c.all = all;
     return c;
   }
+  const hidden = (c, k) => { const n = (c.all[k] || 0) - (c[k] || 0); return n > 0 ? `<small class="hs-hid" dir="ltr" title="${n} مورد دیگر با پتانسیل کمتر؛ «حداقل پتانسیل» را روی «همه» بگذارید">+${n}</small>` : ''; };
   function renderPop() {
     const el = $('#hotPop'); if (!el) return;
     const c = counts();
@@ -282,10 +286,10 @@ export function createHotspots(ctx) {
       <select class="inp hs-preset-sel" data-hs="preset-sel"><option value="">همه دسته‌ها (انتخاب دستی نوع‌ها)</option>${PRESETS.map(p => `<option value="${p.k}" ${presetOn(p) ? 'selected' : ''}>${p.fa}</option>`).join('')}</select>
       ${(() => { const p = PRESETS.find(presetOn); return p && ctx.openAssistant ? `<button class="hs-camp" data-hs="camp" data-k="${p.k}">${icon('spark')} پیشنهاد بیلبورد و محل برای کمپین «${p.fa}»</button>` : ''; })()}
       <div class="pop-title">نوع هات‌اسپات</div>
-      <div class="hs-types">${HOTSPOT_TYPES.map(t => `<button class="hs-type ${pref.types.includes(t.k) ? 'on' : ''}" data-hs="type" data-k="${t.k}" style="--c:${t.color}" title="${esc(t.desc)}"><i></i>${t.short}${H.items ? `<small>${c[t.k] || 0}</small>` : ''}</button>`).join('')}</div>
-      ${pref.types.includes('bourse') ? `<div class="hs-subs">${Object.entries(BOURSE).map(([k, b]) => `<button class="${pref.subs.includes(k) ? 'on' : ''}" data-hs="sub" data-k="${k}">${b.fa}${H.items ? ` <small>${c['b:' + k] || 0}</small>` : ''}</button>`).join('')}</div>` : ''}
+      <div class="hs-types">${HOTSPOT_TYPES.map(t => `<button class="hs-type ${pref.types.includes(t.k) ? 'on' : ''}" data-hs="type" data-k="${t.k}" style="--c:${t.color}" title="${esc(t.desc)}"><i></i>${t.short}${H.items ? `<small>${c[t.k] || 0}</small>${hidden(c, t.k)}` : ''}</button>`).join('')}</div>
+      ${pref.types.includes('bourse') ? `<div class="hs-subs">${Object.entries(BOURSE).map(([k, b]) => `<button class="${pref.subs.includes(k) ? 'on' : ''}" data-hs="sub" data-k="${k}">${b.fa}${H.items ? ` <small>${c['b:' + k] || 0}</small>${hidden(c, 'b:' + k)}` : ''}</button>`).join('')}</div>` : ''}
       <div class="pop-title">حداقل پتانسیل</div>
-      <div class="seg hs-seg">${[[1, 'همه'], [2, 'زیاد به بالا'], [3, 'فقط خیلی زیاد']].map(([v, l]) => `<button class="${pref.min === v ? 'on' : ''}" data-hs="min" data-v="${v}">${l}</button>`).join('')}</div>
+      <div class="seg hs-seg">${[[1, 'همه'], [2, 'زیاد به بالا'], [3, 'فقط خیلی زیاد']].map(([v, l]) => `<button class="${pref.min === v ? 'on' : ''}" data-hs="min" data-v="${v}">${l}${H.items ? ` <small>${H.items.filter(h => h.lvl >= v).length}</small>` : ''}</button>`).join('')}</div>
       <div class="pop-title">اندازه هات‌اسپات‌ها</div>
       <div class="seg hs-seg hs-cov">${COVERAGE.map(c => `<button class="${pref.cov === c ? 'on' : ''}" data-hs="cov" data-v="${c}" title="${c === 50 ? 'فقط شلوغ‌ترین هسته' : c === 95 ? 'تقریباً همه مغازه‌ها و مراکز آن تجمع' : ''}">${COVERAGE_FA[c]} <small>${c}٪</small></button>`).join('')}</div>
       <div class="hs-cov-note">درصد = سهم مغازه‌ها و مراکز هر تجمع که داخل شکل قرار می‌گیرد؛ برای مال، مترو، پارک و… حریم اطراف را کوچک و بزرگ می‌کند.</div>

@@ -90,5 +90,5 @@ export function valueLabel(v) {
   return { t: 'گران', c: 'bad' };
 }
 
-export const LOC_FA = { source: 'مختصات منبع', moved: 'جابه‌جا شده به تقاطع ذکرشده', onroad: 'روی مسیر درست، جای دقیق تقریبی', user: 'اصلاح‌شده توسط شما' };
+export const LOC_FA = { source: 'مختصات منبع', moved: 'جابه‌جا شده به تقاطع ذکرشده', onroad: 'روی مسیر درست، جای دقیق تقریبی', user: 'اصلاح‌شده توسط شما', address: 'از روی نشانی، جای دقیق تقریبی' };
 export const daysSince = iso => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 864e5) : null;

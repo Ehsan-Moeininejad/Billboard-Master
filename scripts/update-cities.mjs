@@ -1,7 +1,8 @@
 // Weekly update for the cities other than Tehran (Tehran's own steps run before this and are not touched).
 //
 //   every week, every city      structures and prices (scripts/build-market.mjs --city=…) — one shared download, fast
-//   every week, two cities      roads, municipal districts and hotspots from OpenStreetMap (build-roads.mjs --city=…)
+//   every week, two cities      roads, municipal districts, hotspots and the place-name list used to place listings
+//                               that came without coordinates, from OpenStreetMap (build-roads.mjs --city=…)
 //                               and Neshan traffic for those two (update-traffic.mjs --city=…, NESHAN_CITY_CALLS each)
 //                               → each city's heavy data is refreshed about once a month; cities never built go first
 //   CITIES_ALL=1                build everything for every city now (first setup, or after a long outage)
@@ -33,7 +34,7 @@ async function buildHeavy(slug, r, st) {
   try {
     run(['scripts/build-roads.mjs', `--city=${slug}`], 30);
     const b = readJSON(`.cache/build-${slug}.json`, {});
-    r.steps.roads = b.roads ? 'ok' : 'kept'; r.steps.districts = b.districts ? 'ok' : (CITIES[slug].districts ? 'kept' : 'none'); r.steps.hotspots = b.hotspots ? 'ok' : 'kept';
+    r.steps.roads = b.roads ? 'ok' : 'kept'; r.steps.districts = b.districts ? 'ok' : (CITIES[slug].districts ? 'kept' : 'none'); r.steps.hotspots = b.hotspots ? 'ok' : 'kept'; r.steps.gazetteer = b.gazetteer ? 'ok' : 'kept';
     r.hotspots = b.hotspots ?? r.hotspots ?? null;
     if (b.roads) st.roadsAt = new Date().toISOString();
     if (b.hotspots) st.hotspotsAt = new Date().toISOString();
@@ -63,6 +64,7 @@ for (const slug of OTHER_CITIES) {
   try {
     run(['scripts/build-market.mjs', ...(LISTINGS ? [LISTINGS] : []), `--city=${slug}`], 10);
     r.steps.market = 'ok'; st.marketAt = new Date().toISOString();
+    r.byAddress = readJSON(`${dir}/market.json`)?.stats?.byAddress ?? null; // listings placed from their address
   } catch (e) { r.errors.push('فهرست سازه‌ها'); console.warn(slug, 'build-market', e.message); }
   // 3) Neshan traffic for the cities in this week's rotation (not again within 6 days, so a re-run costs no quota)
   const fresh = st.trafficAt && Date.now() - new Date(st.trafficAt).getTime() < 6 * 864e5;

@@ -6,7 +6,8 @@
 // If Overpass is down the previous files (if any) are kept and the app falls back to live queries.
 // With --city=<slug> the same files are built for another city into data/cities/<slug>/ (see js/cities.js).
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
-import { CITIES, cityDir } from '../js/cities.js';
+import { CITIES, cityDir, cityArea } from '../js/cities.js';
+import { gazetteerQuery, buildGazetteer } from './geocode.mjs';
 import { OVERPASS_ENDPOINTS } from '../js/config.js';
 import { shapeWay } from '../js/net.js';
 import { OSM_DISTRICT_QUERY, parseOsmDistricts, districtQuery } from '../js/districts.js';
@@ -16,8 +17,9 @@ const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran'
 if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
 const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
 mkdirSync(DIR, { recursive: true });
-const BBOX = IS_TEHRAN ? [35.55, 51.10, 35.85, 51.65] : CITY.box;
-const result = { city: SLUG, roads: null, districts: null, hotspots: null };
+// other cities: roads over the whole map frame (ring roads, entries, suburbs with billboards); hotspots stay on the city box
+const BBOX = IS_TEHRAN ? [35.55, 51.10, 35.85, 51.65] : cityArea(SLUG);
+const result = { city: SLUG, roads: null, districts: null, hotspots: null, ...(IS_TEHRAN ? {} : { gazetteer: null }) };
 // other cities' files are committed to the repo: skip the write when only the timestamp would change
 const same = (file, key, value) => { if (IS_TEHRAN || !existsSync(file)) return false; try { return JSON.stringify(JSON.parse(readFileSync(file, 'utf8'))[key]) === JSON.stringify(value); } catch { return false; } };
 const CLASSES = ['motorway', 'trunk', 'primary', 'secondary', 'motorway_link', 'trunk_link'];
@@ -35,7 +37,10 @@ async function overpass(q, tries = IS_TEHRAN ? 2 : 4) {
         signal: AbortSignal.timeout(200000),
       });
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
-      return await r.json();
+      const j = await r.json();
+      // a busy server answers 200 with whatever it had collected and a «runtime error» remark: that is not the data
+      if (j.remark && /runtime error|timed out|out of memory/i.test(j.remark)) throw new Error(`${url}: ${j.remark.slice(0, 120)}`);
+      return j;
     } catch (e) { last = e; console.warn('overpass failed:', e.message); }
   }
   throw last;
@@ -86,6 +91,15 @@ try {
   if (!same(`${DIR}/hotspots.json`, 'items', items)) writeFileSync(`${DIR}/hotspots.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', items }));
   console.log(`hotspots: ${items.length}`); result.hotspots = items.length;
 } catch (e) { console.warn('hotspots not rebuilt:', e.message); }
+
+// other cities: named streets, squares, neighbourhoods and landmarks, so build-market.mjs can place listings
+// that came without coordinates (data/cities/<slug>/gazetteer.json; not loaded by the site)
+if (!IS_TEHRAN) try {
+  const places = buildGazetteer(await overpassTiled(gazetteerQuery, BBOX));
+  if (places.length < 300) throw new Error(`only ${places.length} places`);
+  if (!same(`${DIR}/gazetteer.json`, 'places', places)) writeFileSync(`${DIR}/gazetteer.json`, JSON.stringify({ updatedAt: new Date().toISOString(), source: 'OpenStreetMap', places }));
+  console.log(`gazetteer: ${places.length}`); result.gazetteer = places.length;
+} catch (e) { console.warn('gazetteer not rebuilt:', e.message); }
 
 try { mkdirSync('.cache', { recursive: true }); writeFileSync(`.cache/build-${SLUG}.json`, JSON.stringify(result)); } catch { /* report only */ }
 if (!ok) process.exitCode = 0; // never fail the deploy because of Overpass
