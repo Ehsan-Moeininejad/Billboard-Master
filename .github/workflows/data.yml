@@ -80,7 +80,8 @@ jobs:
           git add data/market.json data/prices.json data/price-history.csv
           git add data/traffic.json data/traffic-history.csv 2>/dev/null || true
           git diff --cached --quiet || git commit -m "data: weekly snapshot $(date -u +%F)"
-          git push
+          # someone may have committed while this run was working (an upload, an edit): take their commits first
+          ok=0; for i in 1 2 3; do if git pull --rebase origin main && git push; then ok=1; break; fi; sleep 10; done; [ "$ok" = 1 ]
       - name: Other cities (after Tehran, separate commit)
         id: cities
         continue-on-error: true
@@ -94,7 +95,7 @@ jobs:
           node scripts/update-cities.mjs .cache/rs/flagged.json
           git add data/cities data/cities.json data/cities-state.json
           git diff --cached --quiet || git commit -m "data: other cities $(date -u +%F)"
-          git push
+          ok=0; for i in 1 2 3; do if git pull --rebase origin main && git push; then ok=1; break; fi; sleep 10; done; [ "$ok" = 1 ]
       - name: Redeploy site
         id: deploy
         env:
