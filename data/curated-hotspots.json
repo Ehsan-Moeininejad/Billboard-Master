@@ -1,0 +1,23 @@
+{
+  "_help": "راسته‌های شناخته‌شده شهرهای غیر از تهران که در OpenStreetMap مغازه و رستوران کافی ثبت نشده‌اند. هر ردیف: city (اسلاگ شهر)، street (نام خیابان دقیقاً مثل OpenStreetMap)، type (food = رستوران و کافه، retail = راسته خرید)، title (نام نمایشی)، width (عرض هر طرف به متر، پیش‌فرض 120). برای افزودن، یک ردیف کپی و ویرایش کنید؛ هفته بعد روی نقشه می‌آید.",
+  "items": [
+    { "city": "gorgan", "street": "بلوار ناهارخوران", "also": ["بلوار ناهار خوران", "میدان ناهارخوران"], "type": "food", "title": "راسته ناهارخوران", "width": 150 },
+    { "city": "gorgan", "street": "خیابان ولیعصر", "also": ["ولیعصر"], "type": "retail", "title": "خیابان ولیعصر گرگان" },
+    { "city": "karaj", "street": "بلوار جمهوری اسلامی", "also": ["جمهوری"], "type": "food", "title": "بلوار جمهوری (جهانشهر)" },
+    { "city": "karaj", "street": "بلوار موذن", "type": "retail", "title": "بلوار موذن (عظیمیه)" },
+    { "city": "karaj", "street": "بلوار آیت‌الله طالقانی شمالی", "also": ["بلوار طالقانی"], "type": "retail", "title": "بلوار طالقانی" },
+    { "city": "mashhad", "street": "بولوار سجاد", "type": "retail", "title": "بلوار سجاد" },
+    { "city": "mashhad", "street": "بولوار احمدآباد", "type": "retail", "title": "بلوار احمدآباد" },
+    { "city": "mashhad", "street": "بولوار هاشمیه", "type": "food", "title": "بلوار هاشمیه" },
+    { "city": "shiraz", "street": "بلوار چمران", "type": "food", "title": "بلوار چمران", "width": 100 },
+    { "city": "shiraz", "street": "خیابان عفیف آباد", "type": "retail", "title": "خیابان عفیف‌آباد" },
+    { "city": "shiraz", "street": "خیابان ملاصدرا", "also": ["ملاصدرا"], "type": "retail", "title": "خیابان ملاصدرا" },
+    { "city": "isfahan", "street": "چهار باغ بالا", "type": "retail", "title": "چهارباغ بالا" },
+    { "city": "isfahan", "street": "چهارباغ عباسی", "also": ["چهار باغ عباسی", "چهارباغ پایین", "چهار باغ پایین"], "type": "retail", "title": "چهارباغ عباسی" },
+    { "city": "isfahan", "street": "حکیم نظامی", "type": "food", "title": "خیابان حکیم نظامی" },
+    { "city": "kerman", "street": "بلوار جمهوری اسلامی", "also": ["جمهوری"], "type": "retail", "title": "بلوار جمهوری کرمان", "width": 100 },
+    { "city": "yazd", "street": "خیابان امام خمینی", "also": ["امام خمینی"], "type": "retail", "title": "خیابان امام خمینی یزد" },
+    { "city": "sari", "street": "فرهنگ", "type": "retail", "title": "خیابان فرهنگ" },
+    { "city": "sari", "street": "قارن", "type": "retail", "title": "خیابان قارن" }
+  ]
+}

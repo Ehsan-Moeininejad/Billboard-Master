@@ -7,16 +7,19 @@ const WHY = {
   484: 'محدودیت دامنه/IP روی کلید', 485: 'این سرویس روی کلید فعال نیست', 429: 'تعداد درخواست بیش از حد', 403: 'دسترسی رد شد', 401: 'کلید نامعتبر',
 };
 
-export function neshanClient(key, maxCalls) {
-  const st = { calls: 0, stop: '', max: maxCalls };
+// gap: milliseconds between requests (Neshan limits requests per minute per service, about 60 on a free key)
+export function neshanClient(key, maxCalls, { gap = 150 } = {}) {
+  const st = { calls: 0, stop: '', max: maxCalls, waits: 0 };
   async function get(path) {
     if (st.stop) return null;
     if (st.calls >= st.max) { st.stop = 'budget'; return null; }
     st.calls++;
-    await new Promise(r => setTimeout(r, 150)); // gentle pace
+    await new Promise(r => setTimeout(r, gap)); // stay under the per-minute limit
     for (let t = 0; t < 2; t++) {
       try {
         const r = await fetch('https://api.neshan.org' + path, { headers: { 'Api-Key': key }, signal: AbortSignal.timeout(15000) });
+        // too many in this minute: wait a minute and go on (up to 5 times per run)
+        if ((r.status === 482 || r.status === 429) && st.waits < 5) { st.waits++; console.log('neshan: per-minute limit, waiting 65 s'); await new Promise(r => setTimeout(r, 65000)); t--; continue; }
         if (QUOTA.includes(r.status)) {
           let msg = ''; try { msg = (await r.text()).slice(0, 160); } catch { /* none */ }
           st.stop = `${WHY[r.status] || 'خطای نشان'} (HTTP ${r.status})`;

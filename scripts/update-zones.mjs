@@ -39,7 +39,7 @@ const todo = [];
 for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) if (st.cells[`${i}:${j}`] == null) todo.push([i, j]);
 const [cy, cx] = CITY.center;
 todo.sort((a, b) => { const p = center(...a), q = center(...b); return Math.hypot((p[0] - cy) * KY, (p[1] - cx) * KX) - Math.hypot((q[0] - cy) * KY, (q[1] - cx) * KX); });
-const api = neshanClient(KEY, BUDGET);
+const api = neshanClient(KEY, BUDGET, { gap: 1100 }); // about 55 a minute
 let asked = 0;
 const zoneOf = j => {
   if (!j) return null;

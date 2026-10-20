@@ -10,6 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { CITIES, cityDir } from '../js/cities.js';
 import { buildHotspots, roadNamer } from '../js/hotspots.js';
 import { TAGS_BY_ID } from './poi-terms.mjs';
+import { curatedHotspots } from './curated.mjs';
 
 const KEEP = ['name', 'name:fa', 'shop', 'amenity', 'leisure', 'office', 'railway', 'station', 'subway', 'train', 'light_rail', 'line', 'subway:line', 'ref', 'public_transport', 'addr:street'];
 const r6 = v => Math.round(v * 1e6) / 1e6;
@@ -63,6 +64,13 @@ export function buildCityHotspots(slug, { osm = null, roads = null } = {}) {
   const items = buildHotspots({ elements: [...osmEls, ...extra] }, { roadName: roadNamer(plainRoads), relative: true });
   if (items.scale) console.log('density scale vs Tehran:', JSON.stringify(items.scale));
   if (items.length < 15) throw new Error(`only ${items.length} hotspots`);
+  // known gathering streets (data/curated-hotspots.json) that the mapped places miss
+  const spots = [...osmEls, ...extra].filter(e => e.tags?.shop || /^(restaurant|fast_food|cafe|ice_cream|food_court)$/.test(e.tags?.amenity || ''))
+    .map(e => [e.lat ?? (e.bounds.minlat + e.bounds.maxlat) / 2, e.lon ?? (e.bounds.minlon + e.bounds.maxlon) / 2]);
+  const cur = curatedHotspots(slug, DIR, spots);
+  cur.forEach((h, i) => { h.id = `c${i}`; items.push(h); });
+  if (cur.length) console.log(`known streets: ${cur.map(h => h.place).join('، ')}`);
+  items.sort((a, b) => b.score - a.score);
   const file = `${DIR}/hotspots.json`, old = readJSON(file);
   if (JSON.stringify(old?.items) !== JSON.stringify(items)) writeFileSync(file, JSON.stringify({ updatedAt: new Date().toISOString(), source: extra.length ? 'OpenStreetMap + Neshan' : 'OpenStreetMap', items }));
   console.log(`hotspots: ${items.length} (OpenStreetMap places ${osmEls.length}, Neshan places added ${extra.length})`);

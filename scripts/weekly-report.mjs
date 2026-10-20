@@ -129,7 +129,7 @@ const rowsHTML = [
   moves.length ? section('تغییر قیمت', `قیمت ${num(moves.length)} سازه عوض شد؛ بیشترین افزایش و کاهش`) + listCard(topMoves.map(m => [esc(m.x.name), meta(m.x),
     `${toman(m.from)} ← ${toman(m.x.price)}<br><b style="color:${m.d > 0 ? C.bad : C.good};font-size:13.5px">${ltr(pct(m.d))}</b>`])) : '',
   cities ? section('شهرهای دیگر', 'سازه‌ها، قیمت‌ها، مکان‌های نشان و هات‌اسپات‌ها هر هفته؛ معابر و ترافیک نشان هر هفته برای دو شهر') + listCard(Object.entries(cities.cities).map(([slug, c]) => {
-    const STEP = { ok: 'به‌روز شد', kept: 'داده قبلی ماند', waiting: 'منتظر ساخت معابر', none: 'ندارد', historical: 'به‌روز شد', typical: 'به‌روز شد', nokey: 'بدون کلید', fresh: 'تازه است', partial: 'در حال تکمیل', stopped: 'متوقف شد', off: 'خاموش' };
+    const STEP = { ok: 'به‌روز شد', kept: 'داده قبلی ماند', waiting: 'منتظر ساخت معابر', none: 'ندارد', historical: 'به‌روز شد', typical: 'به‌روز شد', nokey: 'بدون کلید', fresh: 'تازه است', partial: 'در حال تکمیل', stopped: 'متوقف شد', off: 'خاموش', noservice: 'سرویس جستجو روی کلید نیست' };
     const parts = [c.steps.market && `سازه‌ها: ${STEP[c.steps.market] || c.steps.market}`, c.steps.roads && `معابر: ${STEP[c.steps.roads] || c.steps.roads}`,
       c.steps.hotspots && `هات‌اسپات‌ها: ${STEP[c.steps.hotspots] || c.steps.hotspots}${c.hotspots ? ` (${num(c.hotspots)})` : ''}`, c.steps.traffic && `ترافیک: ${STEP[c.steps.traffic] || c.steps.traffic}`,
       c.steps.places && `مکان‌های نشان: ${STEP[c.steps.places] || c.steps.places}${c.places != null ? ` (${num(c.places)}${c.placesLeft ? `، ${num(c.placesLeft)} جستجوی مانده` : ''})` : ''}`,

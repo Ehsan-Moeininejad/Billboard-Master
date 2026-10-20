@@ -225,7 +225,7 @@ export function createHotspots(ctx) {
   function popupHTML(h) {
     const T = TYPE_BY_KEY[h.t];
     const kind = h.t === 'bourse' ? `بورس ${BOURSE[h.sub]?.fa}` : h.t === 'transit' ? SUB_FA[h.sub] : h.t === 'mall' ? SUB_FA[h.kind] || T.short : T.short;
-    const what = h.t === 'mall' ? `${h.n} مرکز${h.shops ? ` · ${h.shops} مغازه ثبت‌شده` : ''}${h.ha >= 0.5 ? ` · ${h.ha} هکتار` : ''}`
+    const what = h.curated ? `راسته شناخته‌شده${h.n ? ` · ${h.n} مکان ثبت‌شده در محدوده` : ''}` : h.t === 'mall' ? `${h.n} مرکز${h.shops ? ` · ${h.shops} مغازه ثبت‌شده` : ''}${h.ha >= 0.5 ? ` · ${h.ha} هکتار` : ''}`
       : h.t === 'transit' ? (h.inter ? 'ایستگاه تقاطعی' : '') : h.t === 'campus' ? (h.ha >= 1 ? `${h.ha} هکتار` : '')
       : `${h.n} ${h.t === 'food' ? 'رستوران و کافه' : h.t === 'fun' ? 'مرکز' : 'مغازه'}`;
     const all = nearby(h), close = all.filter(x => x.edge), way = all.filter(x => !x.edge).sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.d - b.d);

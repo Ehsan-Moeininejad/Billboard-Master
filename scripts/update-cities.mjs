@@ -69,8 +69,10 @@ for (const slug of OTHER_CITIES) {
     try {
       run(['scripts/update-pois.mjs', `--city=${slug}`], 25);
       const p = readJSON(`.cache/pois-run-${slug}.json`, {});
-      r.steps.places = p.mode || 'ok'; r.places = p.items ?? null; r.placesLeft = p.left ?? null;
-      if (p.stop) r.errors.push(`جستجوی نشان: ${p.stop}`);
+      r.places = p.items ?? null; r.placesLeft = p.left ?? null;
+      // «جستجو» not on the key (HTTP 485) is a setting, not a failure: noted once, not as an error every week
+      if (/HTTP 485/.test(p.stop || '')) r.steps.places = 'noservice';
+      else { r.steps.places = p.mode || 'ok'; if (p.stop) r.errors.push(`جستجوی نشان: ${p.stop}`); }
     } catch (e) { r.errors.push('مکان‌های نشان'); console.warn(slug, 'update-pois', e.message); }
     if (CITIES[slug].zones) try {
       run(['scripts/update-zones.mjs', `--city=${slug}`], 20);
