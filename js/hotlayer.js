@@ -4,6 +4,7 @@
 import { HOTSPOT_TYPES, TYPE_BY_KEY, BOURSE, HOTSPOT_QUERY, LEVEL_FA, COVERAGE, COVERAGE_FA, buildHotspots, hotspotTitle, unpackRing, distToShape } from './hotspots.js';
 import { OVERPASS_ENDPOINTS } from './config.js';
 import { CITY, IS_TEHRAN, dataPath, cityKey } from './city.js';
+import { smsText } from './geofence.js';
 import { HOTSPOT_BBOX } from './hotspots.js';
 
 const PREF_KEY = 'billboard-insight:hotspots:v1';
@@ -250,6 +251,7 @@ export function createHotspots(ctx) {
         <button data-act="hs-copy" data-id="${h.id}" data-f="poly" title="رئوس چندضلعی، lat,lng در هر خط؛ بخش‌ها با خط خالی جدا می‌شوند">${icon('copy')} چندضلعی${ringsOf(h).length > 1 ? `‌ها (${ringsOf(h).length})` : ''}</button>
         <button data-act="hs-copy" data-id="${h.id}" data-f="geojson" title="GeoJSON Feature">GeoJSON</button>
         <button data-act="hs-copy" data-id="${h.id}" data-f="wkt" title="WKT (lng lat)">WKT</button>
+        <button data-act="hs-copy" data-id="${h.id}" data-f="sms" title="قالب پنل پیامک لوکیشن: [[lng,lat],…]؛ هر بخش در یک خط">${icon('copy')} پیامک لوکیشن</button>
       </div>
       <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${h.lat}" data-lng="${h.lng}" data-kind="" data-name="${esc(h.title)}">${icon('target')} تحلیل بیلبورد در همین محدوده</button>
     </div>`;
@@ -318,7 +320,7 @@ export function createHotspots(ctx) {
       <div class="seg hs-seg">${[[false, 'نقشه: همه فیلترشده‌ها'], [true, 'نقشه: فقط انتخاب‌شده‌ها']].map(([v, l]) => `<button class="${pref.only === v ? 'on' : ''}" data-hs="only" data-v="${v ? 1 : 0}">${l}</button>`).join('')}</div>
       <div class="hs-sel-act">
         <button class="btn btn-primary" data-hs="sel-copy" data-f="poly">${icon('copy')} کپی مختصات چندضلعی‌ها</button>
-        <div><button data-hs="sel-copy" data-f="geojson">${icon('copy')} GeoJSON</button><button data-hs="sel-copy" data-f="wkt">${icon('copy')} WKT</button><button data-hs="sel-copy" data-f="center">${icon('copy')} مرکز و شعاع</button></div>
+        <div><button data-hs="sel-copy" data-f="geojson">${icon('copy')} GeoJSON</button><button data-hs="sel-copy" data-f="wkt">${icon('copy')} WKT</button><button data-hs="sel-copy" data-f="center">${icon('copy')} مرکز و شعاع</button><button data-hs="sel-copy" data-f="sms" title="[[lng,lat],…]؛ هر محدوده در یک خط">${icon('copy')} پیامک لوکیشن</button></div>
         <button class="hs-share" data-hs="sel-share">${icon('share')} لینک اشتراک همین انتخاب‌ها برای همکاران</button>
         <div><button data-hs="sel-exp" data-f="csv">${icon('download')} CSV</button><button data-hs="sel-exp" data-f="geojson">${icon('download')} GeoJSON</button><button data-hs="sel-exp" data-f="kml">${icon('download')} KML</button></div>
       </div>`;
@@ -377,13 +379,17 @@ export function createHotspots(ctx) {
   function copyOne(h, f) {
     const text = f === 'center' ? `${h.lat.toFixed(6)}, ${h.lng.toFixed(6)}, ${h.r}`
       : f === 'poly' ? ringsOf(h).map((r, i, all) => `${all.length > 1 ? `# بخش ${i + 1}\n` : ''}${r.map(([a, b]) => `${a},${b}`).join('\n')}`).join('\n\n')
+      : f === 'sms' ? smsText(ringsOf(h))
       : f === 'geojson' ? JSON.stringify(feature(h)) : wkt(h);
-    const what = { center: 'مرکز و شعاع (lat, lng, متر)', poly: ringsOf(h).length > 1 ? `${ringsOf(h).length} چندضلعی (lat,lng در هر خط)` : 'چندضلعی (lat,lng در هر خط)', geojson: 'GeoJSON', wkt: 'WKT' }[f];
+    const what = { center: 'مرکز و شعاع (lat, lng, متر)', poly: ringsOf(h).length > 1 ? `${ringsOf(h).length} چندضلعی (lat,lng در هر خط)` : 'چندضلعی (lat,lng در هر خط)', geojson: 'GeoJSON', wkt: 'WKT',
+      sms: ringsOf(h).length > 1 ? `مختصات پیامک لوکیشن کپی شد؛ ${ringsOf(h).length} بخش، هر خط یک محدوده` : 'مختصات پیامک لوکیشن' }[f];
+    if (f === 'sms' && ringsOf(h).length > 1) { ctx.copyText(text, what); return; }
     ctx.copyText(text, `${what} کپی شد`);
   }
   function copyMany(list, f) {
     if (!list.length) return;
     if (list.length === 1) { copyOne(list[0], f); return; }
+    if (f === 'sms') { const rings = list.flatMap(ringsOf); ctx.copyText(smsText(rings), `مختصات پیامک لوکیشن کپی شد؛ ${rings.length} محدوده، هر خط یکی`); return; }
     const text = f === 'geojson' ? JSON.stringify({ type: 'FeatureCollection', features: list.map(feature) })
       : list.map(h => `# ${h.title} (${TYPE_BY_KEY[h.t].short})\n` + (f === 'center' ? `${h.lat.toFixed(6)}, ${h.lng.toFixed(6)}, ${h.r}`
         : f === 'wkt' ? wkt(h)
@@ -397,8 +403,8 @@ export function createHotspots(ctx) {
     if (f === 'geojson') download(`${base}.geojson`, JSON.stringify({ type: 'FeatureCollection', features: list.map(feature) }), 'application/geo+json');
     else if (f === 'kml') download(`${base}.kml`, kml(list), 'application/vnd.google-earth.kml+xml');
     else {
-      const head = ['id', 'name', 'type', 'subtype', 'district', 'center_lat', 'center_lng', 'cover_radius_m', 'area_ha', 'parts', 'score', 'level', 'polygon_wkt'];
-      const rows = list.map(h => { const p = feature(h).properties; return [h.id, h.title, p.type, p.subtype, h.dist ?? '', h.lat, h.lng, h.r, h.area ?? '', p.parts, h.score, p.level, wkt(h)]; });
+      const head = ['id', 'name', 'type', 'subtype', 'district', 'center_lat', 'center_lng', 'cover_radius_m', 'area_ha', 'parts', 'score', 'level', 'polygon_wkt', 'polygon_sms_lnglat'];
+      const rows = list.map(h => { const p = feature(h).properties; return [h.id, h.title, p.type, p.subtype, h.dist ?? '', h.lat, h.lng, h.r, h.area ?? '', p.parts, h.score, p.level, wkt(h), smsText(ringsOf(h)).split('\n').join(' | ')]; });
       download(`${base}.csv`, '\ufeff' + [head, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n'), 'text/csv;charset=utf-8');
     }
     ctx.toast(`${list.length} هات‌اسپات در فایل ${f.toUpperCase()} ذخیره شد`, 'ok');

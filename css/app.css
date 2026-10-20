@@ -966,6 +966,8 @@ button.brand-city:hover { background: rgba(91,140,255,.24); }
 .city-foot { font-size: 11px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
 
 .pop-move { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; height: 30px; border-radius: 9px; border: 1px dashed var(--line-2); font-size: 11.5px; color: var(--text-2); }
+.pop-geo { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 6px; height: 30px; border-radius: 9px; border: 1px solid var(--line-2); font-size: 11.5px; color: var(--text-2); background: transparent; cursor: pointer; }
+.pop-geo:hover { color: var(--text); border-color: var(--accent, #8E6BFF); }
 .pop-move:hover { border-color: var(--accent); color: var(--text); }
 .pop-move.on { border-style: solid; border-color: var(--warn); color: var(--warn); }
 .pop-move svg { width: 13px; height: 13px; }

@@ -5,6 +5,7 @@ import { loadPricing, savePricing, ruleFor, mergeFeed, fetchFeed, monthlyPrice }
 import { approximateDistricts, districtOf, DISTRICT_CENTERS, pointInPoly } from './districts.js';
 import { evalSite, buildOptions, optimize, budgetCurve, OBJECTIVES } from './planner.js';
 import { loadInventory, saveInventory, parseTable, TYPE_FA, SOURCE_FA } from './inventory.js';
+import { smsText, circleRing, SMS_POINT_RADIUS } from './geofence.js';
 import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market.js';
 import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
@@ -1449,6 +1450,7 @@ function structPopup(st, r) {
   const hsLine = hs ? `<button class="pop-hot" data-act="hs-open" data-id="${hs.id}">${icon('flame')} داخل هات‌اسپات «${esc(hs.title)}» · پتانسیل ${hs.score}</button>` : '';
   return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${loc}${hsLine}${stats}
     <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${st.lat}" data-lng="${st.lng}" data-kind="${st.type}" data-name="${esc(st.name)}" data-price="${st.price || ''}">${icon('target')} تحلیل کامل</button>
+    <button class="pop-geo" data-act="geo-copy" data-lat="${st.lat}" data-lng="${st.lng}" title="دایره ${SMS_POINT_RADIUS} متری دور سازه با قالب پنل پیامک لوکیشن: [[lng,lat],…]">${icon('copy')} مختصات برای پیامک لوکیشن (شعاع ${SMS_POINT_RADIUS} م)</button>
     ${st.source !== 'osm' && !state.settings.unlockMove ? `<button class="pop-move ${unlockedIds.has(st.id) ? 'on' : ''}" data-act="unlock-move" data-id="${esc(st.id)}">${icon(unlockedIds.has(st.id) ? 'unlock' : 'lock')} ${unlockedIds.has(st.id) ? 'آزاد است؛ نشانگر را بکشید (بعد از رها کردن دوباره قفل می‌شود)' : 'جابه‌جا کردن این سازه'}</button>` : ''}`;
 }
 
@@ -2629,7 +2631,7 @@ function openHelp() {
     <ul>
       <li><b>شکل و اندازه</b>: برای راسته‌ها، بورس‌ها، رستوران‌ها، مراکز اداری و درمانی، شکل از جایی کشیده می‌شود که مغازه‌ها و مراکز به هم نزدیک‌ترند. با دکمه «اندازه هات‌اسپات‌ها» تعیین می‌کنید شکل چند درصد آن‌ها را دربر بگیرد: هسته 50٪، متعادل 70٪ (پیش‌فرض)، گسترده 85٪ یا کامل 95٪. برای مال، مترو، هایپرمارکت، پارک، ورزشگاه و دانشگاه همین دکمه حریم اطراف را کوچک و بزرگ می‌کند. اگر تجمع تکه‌تکه باشد، هر تکه یک چندضلعی جدا می‌شود.</li>
       <li><b>پتانسیل</b> 0 تا 100 = وزن نوع مکان × (45٪ جایگاه اندازه در بین هم‌نوع‌ها + 55٪ اندازه نسبت به یک هات‌اسپات قوی) + امتیاز هم‌پوشانی با انواع دیگر. 75 به بالا «خیلی زیاد»، 55 به بالا «زیاد».</li>
-      <li><b>خروجی مختصات</b>: هر هات‌اسپات را می‌توان به‌صورت چندضلعی (رئوس lat,lng؛ برای چند بخش، چند چندضلعی)، GeoJSON، WKT یا مرکز و شعاعِ دایره‌ای که کل محدوده را می‌پوشاند کپی کرد، یا همه هات‌اسپات‌های فیلترشده را CSV، GeoJSON و KML گرفت؛ برای جئوفنس تبلیغات موبایل و پلتفرم‌های نقشه.</li>
+      <li><b>خروجی مختصات</b>: هر هات‌اسپات را می‌توان به‌صورت چندضلعی (رئوس lat,lng؛ برای چند بخش، چند چندضلعی)، GeoJSON، WKT یا مرکز و شعاعِ دایره‌ای که کل محدوده را می‌پوشاند کپی کرد، یا همه هات‌اسپات‌های فیلترشده را CSV، GeoJSON و KML گرفت؛ برای جئوفنس تبلیغات موبایل و پلتفرم‌های نقشه. دکمه «پیامک لوکیشن» همان قالب پنل پیامک لوکیشن را می‌دهد: <code>[[lng,lat],…]</code> با نقطه اول تکرارشده در انتها؛ اگر محدوده چند بخش داشته باشد هر بخش در یک خط می‌آید. در پنجره هر سازه هم دکمه‌ای هست که دایره‌ای 300 متری دور آن سازه را با همین قالب کپی می‌کند.</li>
       <li><b>دسته‌ها</b>: مال و بازار، راسته خرید، 14 بورس تخصصی (موبایل، لوازم خانگی، پوشاک، طلا، آرایشی، کودک، ورزش، کتاب، ساز، خانه، ابزار، خودرو، دارو، حیوانات خانگی)، رستوران و کافه، سرگرمی، مترو و پایانه، دانشگاه، هایپرمارکت، مرکز اداری و تجاری، مراکز درمانی، پارک و ورزشگاه.</li>
       <li><b>دستیار کمپین</b>: بنویسید چه چیزی، با چه بودجه‌ای، چند ماه و کجا تبلیغ می‌کنید. انتخاب سازه‌ها همیشه با موتور خود سایت است: هر سازه بر اساس نزدیکی به هات‌اسپات‌های آن دسته کالا (داخل محدوده، تا 250 متر و مسیر رسیدن تا 900 متر، وزن‌دار با پتانسیل) و امتیاز ترافیکی‌اش رتبه می‌گیرد و تا سقف بودجه انتخاب می‌شود. متن پیشنهاد و ایده‌های طراحی را یک مدل رایگان می‌نویسد (با کلید رایگان OpenRouter، Gemini یا Groq، وگرنه Pollinations) و اگر هیچ مدلی در دسترس نباشد، موتور داخلی سایت متن را می‌نویسد.</li>
       <li><b>انتخاب و اشتراک</b>: با تیک کنار هر هات‌اسپات چند تا را انتخاب کنید، فقط همان‌ها را روی نقشه نگه دارید، مختصاتشان را یک‌جا کپی کنید یا لینکش را برای همکار بفرستید. دکمه‌های «برای تبلیغ چه چیزی؟» نوع‌های مناسب هر دسته کالا را یک‌جا انتخاب می‌کنند. پاپ‌آپ هر هات‌اسپات سازه‌های داخل محدوده و سازه‌های مسیر رسیدن (تا 900 متر) را با امتیاز و قیمت نشان می‌دهد؛ «اوج حضور» الگوی معمول هر نوع مکان است، نه داده اندازه‌گیری‌شده.</li>
@@ -2679,6 +2681,10 @@ function bindChrome() {
   if (!CITY.districts) $('#lyrDistricts').closest('.switch-row').hidden = true;
   $('#lyrUnlock').checked = !!state.settings.unlockMove;
   $('#lyrUnlock').addEventListener('change', e => { state.settings.unlockMove = e.target.checked; save(); unlockedIds.clear(); drawStructures(); toast(e.target.checked ? 'سازه‌ها آزادند؛ با کشیدن جابه‌جا می‌شوند' : 'سازه‌ها قفل شدند', 'ok'); });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act="geo-copy"]'); if (!b) return;
+    copyText(smsText([circleRing(+b.dataset.lat, +b.dataset.lng, SMS_POINT_RADIUS)]), `مختصات پیامک لوکیشن کپی شد (دایره ${SMS_POINT_RADIUS} متری، [[lng,lat],…])`);
+  });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-act="unlock-move"]'); if (!b) return;
     const id = b.dataset.id;
