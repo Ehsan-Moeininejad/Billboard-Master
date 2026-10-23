@@ -1,5 +1,5 @@
 {
- "updatedAt": "2026-10-20T13:36:31.320Z",
+ "updatedAt": "2026-10-23T02:22:39.821Z",
  "cities": {
   "karaj": {
    "fa": "کرج",
@@ -9,7 +9,7 @@
    "districts": 10,
    "limited": false,
    "roadsAt": "2026-10-20T12:14:42.881Z",
-   "marketAt": "2026-10-20T13:36:29.889Z",
+   "marketAt": "2026-10-23T02:22:38.847Z",
    "trafficAt": "2026-10-19T08:55:05.375Z"
   },
   "isfahan": {
@@ -20,7 +20,7 @@
    "districts": 15,
    "limited": false,
    "roadsAt": "2026-10-20T12:23:59.965Z",
-   "marketAt": "2026-10-20T13:36:30.198Z",
+   "marketAt": "2026-10-23T02:22:39.047Z",
    "trafficAt": "2026-10-19T09:00:13.072Z"
   },
   "mashhad": {
@@ -31,7 +31,7 @@
    "districts": 12,
    "limited": false,
    "roadsAt": "2026-10-20T12:27:06.700Z",
-   "marketAt": "2026-10-20T13:36:30.475Z",
+   "marketAt": "2026-10-23T02:22:39.230Z",
    "trafficAt": "2026-10-19T09:06:25.693Z"
   },
   "shiraz": {
@@ -42,7 +42,7 @@
    "districts": 11,
    "limited": false,
    "roadsAt": "2026-10-20T12:35:37.190Z",
-   "marketAt": "2026-10-20T13:36:30.718Z",
+   "marketAt": "2026-10-23T02:22:39.396Z",
    "trafficAt": "2026-10-19T09:11:20.716Z"
   },
   "kerman": {
@@ -53,7 +53,7 @@
    "districts": 5,
    "limited": true,
    "roadsAt": "2026-10-20T12:38:18.548Z",
-   "marketAt": "2026-10-20T13:36:30.881Z",
+   "marketAt": "2026-10-23T02:22:39.513Z",
    "trafficAt": "2026-10-19T11:06:46.866Z"
   },
   "yazd": {
@@ -64,7 +64,7 @@
    "districts": 0,
    "limited": false,
    "roadsAt": "2026-10-20T12:45:23.178Z",
-   "marketAt": "2026-10-20T13:36:31.054Z",
+   "marketAt": "2026-10-23T02:22:39.647Z",
    "trafficAt": "2026-10-19T09:16:19.691Z"
   },
   "sari": {
@@ -75,7 +75,7 @@
    "districts": 3,
    "limited": true,
    "roadsAt": "2026-10-20T12:55:49.240Z",
-   "marketAt": "2026-10-20T13:36:31.187Z",
+   "marketAt": "2026-10-23T02:22:39.735Z",
    "trafficAt": "2026-10-19T09:18:38.270Z"
   },
   "gorgan": {
@@ -86,7 +86,7 @@
    "districts": 0,
    "limited": true,
    "roadsAt": "2026-10-20T13:08:44.835Z",
-   "marketAt": "2026-10-20T13:36:31.320Z",
+   "marketAt": "2026-10-23T02:22:39.820Z",
    "trafficAt": "2026-10-19T09:20:54.679Z"
   }
  }
