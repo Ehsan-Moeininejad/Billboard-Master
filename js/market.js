@@ -7,7 +7,7 @@ export function mergeMarket(inventory, market) {
   for (const m of market.items || []) {
     const it = byId.get(m.id);
     if (!it) {
-      inventory.push({ ...m, source: 'market', priceSource: m.price ? 'market' : null });
+      inventory.push({ ...m, source: 'market', priceSource: m.price ? (m.agency ? 'agency' : 'market') : null });
       added++; continue;
     }
     // keep user edits: dragged position, manual price, negotiated price, value coefficient, owner override
@@ -15,9 +15,10 @@ export function mergeMarket(inventory, market) {
     const keepPrice = it.priceSource === 'manual';
     Object.assign(it, {
       name: m.name, address: m.address, type: m.type, w: m.w, h: m.h, faces: m.faces, site: m.site,
+      code: m.code, dir: m.dir, reservedUntil: m.reservedUntil, window: m.window, agency: m.agency, priceBasis: m.priceBasis, sourcePrice: m.sourcePrice,
       owner: it.ownerEdited ? it.owner : m.owner, loc: keepPos ? 'user' : m.loc, locNote: keepPos ? '' : m.locNote,
       ...(keepPos ? {} : { lat: m.lat, lng: m.lng }),
-      ...(keepPrice ? {} : { price: m.price, prevPrice: m.prevPrice ?? it.prevPrice, priceEstimated: m.priceEstimated, priceUpdated: m.priceUpdated, priceSource: m.price ? 'market' : it.priceSource }),
+      ...(keepPrice ? {} : { price: m.price, prevPrice: m.priceBasis !== it.priceBasis ? (m.prevPrice ?? null) : (m.prevPrice ?? it.prevPrice), priceEstimated: m.priceEstimated, priceUpdated: m.priceUpdated, priceSource: m.price ? (m.agency ? 'agency' : 'market') : it.priceSource }),
     });
     updated++;
   }
@@ -50,7 +51,13 @@ export function applyValue(entries, monthlyOf) {
     const mp = monthlyOf(e), mi = e.ev.weeklyImp * 30 / 7;
     if (mp > 0 && mi > 0 && !e.priceEstimated) pts.push({ t: e.type, x: Math.log(mi), y: Math.log(mp) });
   }
-  const fit = fitHedonic(pts);
+  let fit = fitHedonic(pts);
+  // a city with no current rate card: fit on the estimates, so the index still ranks value within the city
+  if (!fit) {
+    const all = [];
+    for (const e of entries) { const mp = monthlyOf(e), mi = e.ev.weeklyImp * 30 / 7; if (mp > 0 && mi > 0) all.push({ t: e.type, x: Math.log(mi), y: Math.log(mp) }); }
+    fit = fitHedonic(all); if (fit) fit.fromEstimates = true;
+  }
   for (const e of entries) {
     const mi = e.ev.weeklyImp * 30 / 7, mp = monthlyOf(e);
     const a = fit ? (fit.a[e.type] ?? fit.a0) : null;

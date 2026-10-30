@@ -6,11 +6,11 @@ import { estimate, scoreFrom } from './model.js';
 const TYPE_FORMAT = { bridge: 'bridge', ad: 'bulletin', bulletin: 'bulletin', poster: 'poster', digital: 'digital', rooftop: 'rooftop' };
 
 /** A model-ready site at point p on way w. */
-export function virtualSite(w, p, { format, facing = 'fwd', clutter = 0, twin = null } = {}) {
+export function virtualSite(w, p, { format, facing = 'fwd', clutter = 0, twin = null, board = null } = {}) {
   const snap = nearestOnLine(p, w.line);
   const back = walk(w.line, snap, 700, -1).reverse(), fwd = walk(w.line, snap, 700, 1);
   return {
-    lat: snap.point[0], lng: snap.point[1], format, facing, clutter, overrides: {}, loopShare: 1,
+    lat: snap.point[0], lng: snap.point[1], format, facing, clutter, overrides: {}, loopShare: 1, ...(board ? { board } : {}),
     road: {
       name: w.name, cls: w.cls, oneway: w.oneway, lanes: w.lanes, maxspeed: w.maxspeed, width: w.width,
       bearing: snap.bearing, line: back.concat(fwd.slice(1)), twinLine: twin, twinLanes: null, source: 'osm',
@@ -28,7 +28,26 @@ export function quick(site, settings) {
   };
 }
 
+// real face size (metres) when the listing gives it; long side across, short side up (vertical boards keep theirs)
+function faceSize(st, format) {
+  if (!(st.w > 0 && st.h > 0)) return null;
+  const w = +st.w, h = +st.h;
+  if (w > 40 || h > 40) return null; // centimetres or a typo
+  return format === 'poster' ? { w, h } : { w: Math.max(w, h), h: Math.min(w, h) };
+}
+// «غرب به شرق» in a rate card = the face is read by traffic heading east
+const DIR_BEARING = { 'جنوب به شمال': 0, 'غرب به شرق': 90, 'شمال به جنوب': 180, 'شرق به غرب': 270 };
+export const dirBearing = txt => { const m = String(txt || '').match(/(شمال|جنوب|شرق|غرب) به (شمال|جنوب|شرق|غرب)/); return m ? DIR_BEARING[m[0]] ?? null : null; };
+const angle = (a, b) => { const d = Math.abs(((a - b) % 360 + 360) % 360); return d > 180 ? 360 - d : d; };
+
 function bestFacing(w, p, opts, settings) {
+  // a known traffic direction (agency rate card) picks the face instead of «whichever reaches more»
+  if (opts.dirBearing != null) {
+    const v0 = virtualSite(w, p, { ...opts, facing: 'fwd' });
+    const facing = w.oneway || angle(v0.road.bearing ?? 0, opts.dirBearing) <= 90 ? 'fwd' : 'bwd';
+    const v = facing === 'fwd' ? v0 : virtualSite(w, p, { ...opts, facing });
+    return { ...quick(v, settings), facing, site: v };
+  }
   const options = opts.format === 'bridge' && !w.oneway ? ['both'] : w.oneway ? ['fwd'] : ['fwd', 'bwd'];
   let best = null;
   for (const facing of options) {
@@ -82,7 +101,7 @@ export function rankStructures(structs, ways, settings) {
     }
     const clutter = structs.filter(o => o !== st && dist([o.lat, o.lng], [st.lat, st.lng]) > 15 && dist([o.lat, o.lng], [st.lat, st.lng]) < VIS.clutterRadius).length;
     const format = TYPE_FORMAT[st.type] || (near.w.cls === 'motorway' || near.w.cls === 'trunk' ? 'bulletin' : 'poster');
-    const q = bestFacing(near.w, [st.lat, st.lng], { format, clutter }, settings);
+    const q = bestFacing(near.w, [st.lat, st.lng], { format, clutter, dirBearing: dirBearing(st.dir || st.address), board: faceSize(st, format) }, settings);
     return { ...st, ranked: true, roadGuessed: guessed, road: near.w.name || ROAD_CLASSES[near.w.cls]?.short, cls: near.w.cls, format, clutter, ...q, vsite: q.site, site: undefined };
   }).sort((a, b) => (b.ranked - a.ranked) || (Math.round(b.imp / 100) - Math.round(a.imp / 100)) || (b.exp - a.exp) || (b.sight - a.sight));
 }

@@ -12,7 +12,10 @@
 //   • price history (data/price-history.csv) and change since the previous run
 import { readFileSync, writeFileSync, existsSync, appendFileSync, mkdirSync } from 'node:fs';
 import { CITIES, cityDir, cityArea, ELSEWHERE } from '../js/cities.js';
-import { makeGeocoder } from './geocode.mjs';
+import { makeGeocoder, gazetteerQuery, buildGazetteer } from './geocode.mjs';
+import { fitRateCard, median, DEFAULT_M2 } from './price-calib.mjs';
+import { OVERPASS_ENDPOINTS } from '../js/config.js';
+import { readdirSync } from 'node:fs';
 
 // --city=<slug> builds another city into data/cities/<slug>/; without it everything below is Tehran, unchanged
 const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran').slice(7);
@@ -186,7 +189,110 @@ function pushItem(x, lat, lng, loc, note) {
   });
 }
 
-const out = { updatedAt: new Date().toISOString(), source: { name: 'Rasamap (MIT)', url: 'https://github.com/alireza-zareian/Rasamap-Repository', sites: ['billboardiha.com', 'irbillboard.com', 'aradholding.com'] }, stats, items };
+// ── agency rate cards (data/agency/*.json) ─────────────────────
+// Current prices and positions from an agency. Each face is added as its own structure (placed from its address),
+// and the rate card sets today's price level for every other listing (scripts/price-calib.mjs).
+const agencies = (() => {
+  try { return readdirSync('data/agency').filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(`data/agency/${f}`, 'utf8'))).filter(a => (a.city || 'tehran') === SLUG); }
+  catch { return []; }
+})();
+async function overpassJSON(q) {
+  for (let t = 0; t < 3; t++) for (const url of OVERPASS_ENDPOINTS) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'billboard-insight (GitHub Actions)' }, body: 'data=' + encodeURIComponent(q), signal: AbortSignal.timeout(200000) });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const j = await r.json();
+      if (j.remark && /runtime error|timed out|out of memory/i.test(j.remark)) throw new Error(j.remark.slice(0, 80));
+      return j;
+    } catch (e) { console.warn('overpass:', url, e.message); }
+    await new Promise(r => setTimeout(r, 15000 * (t + 1)));
+  }
+  return null;
+}
+// street-level place names for addresses the main-road check cannot place (cached for the run)
+async function cityGeocoder() {
+  if (geocode) return geocode;
+  const cache = `.cache/gazetteer-${SLUG}.json`;
+  let places = null;
+  if (existsSync(cache)) try { places = JSON.parse(readFileSync(cache, 'utf8')); } catch { /* rebuild */ }
+  if (!places) {
+    const bb = [BOX.s, BOX.w, BOX.n, BOX.e], mLat = (BOX.s + BOX.n) / 2, mLng = (BOX.w + BOX.e) / 2, els = [];
+    for (const b of [[bb[0], bb[1], mLat, mLng], [bb[0], mLng, mLat, bb[3]], [mLat, bb[1], bb[2], mLng], [mLat, mLng, bb[2], bb[3]]]) {
+      const j = await overpassJSON(gazetteerQuery(b)); if (j) els.push(...(j.elements || []));
+    }
+    places = buildGazetteer({ elements: els });
+    try { mkdirSync('.cache', { recursive: true }); writeFileSync(cache, JSON.stringify(places)); } catch { /* run only */ }
+    console.log(`gazetteer for agency addresses: ${places.length} names`);
+  }
+  return places.length ? makeGeocoder(places, { cityName: CITY.fa, inArea: ([la, ln]) => la > BOX.s && la < BOX.n && ln > BOX.w && ln < BOX.e }) : null;
+}
+const corridorOf = text => { const r = namedRoad(text); return r ? r.key : 'street'; };
+const agencyRows = [];
+if (agencies.length) {
+  let placed = 0, missed = [];
+  let geo = null;
+  for (const ag of agencies) {
+    const when = ag.issuedIso || null;
+    for (const a of ag.items) {
+      const text = a.address;
+      let pt = null, loc = 'moved', note = '';
+      const road = namedRoad(text);
+      if (road) { const c = crossPoint(text, road); if (c) { pt = c.pt; note = `${road.name} × ${c.via}`; } }
+      if (!pt) {
+        geo ||= await cityGeocoder();
+        const g = geo && geo(text);
+        if (g && inBox(g)) { pt = [g.lat, g.lng]; loc = 'address'; note = `نزدیک ${g.via}`; }
+      }
+      const m2 = a.m2 || (a.w && a.h ? +(a.w * a.h).toFixed(1) : null);
+      agencyRows.push({ price: a.price, m2, type: a.type, corridor: corridorOf(text) });
+      if (!pt) { missed.push(`${a.code}: ${text}`); continue; }
+      placed++;
+      const id = `ag-${(ag.agency || 'agency').replace(/\s+/g, '')}-${a.code}`;
+      const p = prevById.get(id);
+      items.push({
+        id, name: `${a.typeFa || ''} ${text.split('،')[0]}`.trim(), address: text, lat: +pt[0].toFixed(6), lng: +pt[1].toFixed(6),
+        type: a.type, w: a.w || null, h: a.h || null, faces: 1, owner: ag.agency, site: `تعرفه ${ag.agency} ${ag.issued}`,
+        price: a.price, prevPrice: p && p.price !== a.price ? p.price : (p?.prevPrice ?? null), priceEstimated: false, priceUpdated: when,
+        loc, locNote: note, code: a.code, dir: a.dir || null, reservedUntil: a.reservedUntil || null, window: a.window || null, agency: true,
+      });
+    }
+  }
+  stats.agency = placed; stats.agencyUnplaced = missed.length;
+  console.log(`agency rate cards: ${placed} placed, ${missed.length} not placed${missed.length ? ':\n  ' + missed.slice(0, 15).join('\n  ') : ''}`);
+}
+
+// ── today's price level for the other listings ─────────────────
+// Tehran fits it on the rate card and saves the level (k) for the other cities, which have no rate card yet.
+const CALIB = 'data/price-calibration.json';
+const model = agencyRows.length ? fitRateCard(agencyRows) : null;
+let calib = null;
+if (model) {
+  const rs = items.filter(i => !i.agency);
+  const ratios = rs.filter(i => i.price).map(i => model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corridorOf(i.address) }) / i.price);
+  calib = { k: median(ratios), from: agencies.map(a => `${a.agency} ${a.issued}`).join('، '), n: model.n, rmse: +model.rmse.toFixed(2), at: new Date().toISOString() };
+  for (const i of rs) {
+    const m = model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corridorOf(i.address) });
+    const old = i.price;
+    i.sourcePrice = old || null;
+    i.price = Math.round((old ? Math.exp(0.5 * Math.log(m) + 0.5 * Math.log(old * calib.k)) : m) / 1e6) * 1e6;
+    i.priceEstimated = true; i.priceBasis = `برآورد با نرخ ${calib.from}`;
+    // a change of basis is not a price move
+    const p = prevById.get(i.id); i.prevPrice = p && p.priceBasis === i.priceBasis ? (p.price !== i.price ? p.price : p.prevPrice ?? null) : null;
+  }
+  if (IS_TEHRAN) writeFileSync(CALIB, JSON.stringify(calib, null, 1));
+  console.log(`price level: rate card n=${model.n} (error ±${Math.round((Math.exp(model.rmse) - 1) * 100)}%), old listings × ${calib.k.toFixed(1)}`);
+} else if (!IS_TEHRAN && existsSync(CALIB)) {
+  // other cities: the Tehran level applied to the city's own old prices (their relative level is kept)
+  calib = JSON.parse(readFileSync(CALIB, 'utf8'));
+  for (const i of items) if (i.price && calib.k) {
+    i.sourcePrice = i.price; i.price = Math.round(i.price * calib.k / 1e6) * 1e6; i.priceEstimated = true; i.priceBasis = `برآورد: قیمت منبع × سطح قیمت ${calib.from} در تهران`;
+    const p = prevById.get(i.id); i.prevPrice = p && p.priceBasis === i.priceBasis ? (p.price !== i.price ? p.price : p.prevPrice ?? null) : null;
+  }
+  console.log(`price level from Tehran: × ${calib.k?.toFixed(1)}`);
+}
+if (calib) stats.priceLevel = +calib.k.toFixed(2);
+
+const out = { updatedAt: new Date().toISOString(), source: { name: 'Rasamap (MIT)', url: 'https://github.com/alireza-zareian/Rasamap-Repository', sites: ['billboardiha.com', 'irbillboard.com', 'aradholding.com'], agencies: agencies.map(a => ({ agency: a.agency, issued: a.issued, source: a.source })), calibration: calib }, stats, items };
 mkdirSync(DIR, { recursive: true });
 writeFileSync(`${DIR}/market.json`, JSON.stringify(out));
 if (!existsSync(`${DIR}/price-history.csv`)) writeFileSync(`${DIR}/price-history.csv`, 'date,source,id,name,owner,price,negotiated\n');

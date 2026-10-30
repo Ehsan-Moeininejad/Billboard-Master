@@ -57,8 +57,20 @@ async function init() {
   } else setBasemap(state.settings.basemap || 'dark');
   if (DEMO) setupDemo();
 
+  // a tap on a phone only closes what is open; adding or analysing needs a long press (desktop: click as before,
+  // or right-click). A stray tap while panning should never add a point or a structure.
+  const coarse = () => matchMedia('(pointer: coarse)').matches;
+  let tapHintShown = false;
   map.on('click', e => {
     closePops();
+    if (coarse()) {
+      if (!tapHintShown && (state.mapMode === 'addStructure' || state.listTab === 'sites' || state.selectedId)) { tapHintShown = true; toast('برای افزودن یا تحلیل، انگشت را روی نقشه نگه دارید', ''); }
+      return;
+    }
+    mapPick(e);
+  });
+  map.on('contextmenu', e => { e.originalEvent?.preventDefault?.(); closePops(); mapPick(e); });
+  function mapPick(e) {
     if (state.mapMode === 'addStructure') {
       const near = [...roadCache.ways.values()].find(w => nearestOnLine([e.latlng.lat, e.latlng.lng], w.line).distance < 60);
       const [it] = addInventory([{ name: `سازه ثبت‌شده ${state.inventory.filter(x => x.source === 'manual').length + 1}`, lat: e.latlng.lat, lng: e.latlng.lng, type: near && (near.cls === 'motorway' || near.cls === 'trunk') ? 'bridge' : 'bulletin' }], 'manual');
@@ -71,7 +83,7 @@ async function init() {
     if (state.listTab === 'sites' || state.selectedId) { analyzeAt(e.latlng.lat, e.latlng.lng); return; }
     // elsewhere a stray click should not open a new analysis; offer it instead
     L.popup({ className: 'ask-pop' }).setLatLng(e.latlng).setContent(`<b>تحلیل این نقطه؟</b><div class="pop-sub">تردد، سرعت، زمان مواجهه و ایمپرشن یک بیلبورد فرضی در همین نقطه</div><button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${e.latlng.lat}" data-lng="${e.latlng.lng}" data-kind="" data-name="">${icon('target')} تحلیل این نقطه</button>`).openOn(map);
-  });
+  }
   map.on('moveend', () => { scheduleRefresh(); if (state.listTab === 'finder' && !state.selectedId) renderPanel(); });
 
   bindChrome();
@@ -120,6 +132,7 @@ async function init() {
   }
   updateDataChip();
   if (state.inventory.length) setStructuresLayer(true);
+  if (matchMedia('(pointer: coarse)').matches) $('#modeHint span').textContent = 'انگشت را روی هر نقطه از بزرگراه یا پل نگه دارید تا تحلیل شود';
   setTimeout(() => $('#modeHint').classList.toggle('hide', state.sites.length > 0 || state.listTab !== 'sites'), 50);
   if (!welcomed()) setTimeout(openWelcome, 300);
 }
@@ -584,7 +597,33 @@ function summaryTab(site, sum, est) {
     </div>
   </div>
   <div class="p-sec"><div class="sec-title"><span>بینش‌ها</span></div><ul class="insights">${ins}</ul></div>
+  ${howSec(site, sum, est)}
   ${sourcesSec(site)}`;
+}
+
+// step-by-step of how this estimate was reached (same numbers the model used)
+function howSec(site, sum, est) {
+  const r = site.road, cls = ROAD_CLASSES[r.cls] || ROAD_CLASSES.secondary, d = est.daily;
+  const LS = { osm: 'از OpenStreetMap', width: `از عرض ثبت‌شده معبر (${num1(r.width)} م)`, default: `پیش‌فرض «${cls.short}»؛ اگر می‌دانید، در «سازه و هزینه» اصلاح کنید` };
+  const dirs = est.dirs.map(x => `${x.label.replace('ترافیک ', '')}: <b>${x.lanes}</b> خط (${LS[x.laneSource] || ''})`).join('<br>');
+  const ov = site.overrides || {};
+  const demand = est.dirs.reduce((a, x) => a + x.demand, 0);
+  const cap = est.dirs.reduce((a, x) => a + x.capacityHour, 0);
+  const peakVeh = Math.max(...est.hourly.map(h => h.vehicles));
+  const peakH = est.hourly.find(h => h.vehicles === peakVeh)?.h ?? 0;
+  const att = d.ots ? d.impressions / d.ots : 0;
+  const steps = [
+    ['خطوطی که تابلو را می‌بینند', dirs],
+    ['تقاضای روزانه', ov.dailyVolume ? `حجم واردشده: <b>${num(ov.dailyVolume)}</b> خودرو در روز` : `${num(cls.laneDaily)} خودرو برای هر خط «${cls.short}» در روز${CITY.volF && CITY.volF !== 1 ? ` × ضریب ${CITY.fa} (${CITY.volF})` : ''}${state.dayType !== 'weekday' ? ` × ضریب ${dayLabelFa()}` : ''} = <b>${num(demand)}</b>`],
+    ['پخش در ساعت‌ها', `سهم هر ساعت از الگوی ترافیک ${site.live?.traffic ? 'نشانِ همین نقطه' : 'تهران'}؛ ظرفیت <b>${num(cap)}</b> خودرو در ساعت. وقتی سرعت زیر نصف سرعت آزاد است، ظرفیت عبور کم می‌شود و بقیه به ساعت بعد می‌رود. شلوغ‌ترین ساعت ${hourLabel(peakH)} با ${num(peakVeh)} خودرو.`],
+    ['تردد نهایی', `<b>${num(d.vehicles)}</b> خودرو × ${num1(state.settings.occupancy || 1.5)} سرنشین = <b>${num(d.ots)}</b> نفر در معرض دید`],
+    ['زمان مواجهه', `پنجره دید ${num(est.geo[0]?.window || 0)} متر ÷ سرعت هر ساعت = میانگین <b>${num1(d.avgExposure)}</b> ثانیه`],
+    ['احتمال دیدن', `توجه به این نوع تابلو ${Math.round(est.notice * 100)}٪ × منحنی زمان (هرچه مواجهه طولانی‌تر، بیشتر) = به طور متوسط <b>${Math.round(att * 100)}٪</b> از افراد`],
+    ['ایمپرشن', `<b>${num(d.impressions)}</b> در روز؛ ${compact(sum.monthly)} در ماه (با الگوی هفته: پنجشنبه 86٪، جمعه 62٪)`],
+  ];
+  return `<details class="p-sec how"><summary class="sec-title"><span>${icon('info')} این عددها چطور حساب شد</span></summary>
+    <ol class="how-steps">${steps.map(([t, v]) => `<li><b>${t}</b><span>${v}</span></li>`).join('')}</ol>
+    <div class="note">همه عددها تخمین مدل است، نه شمارش. حجم واقعی را اگر دارید، در «سازه و هزینه» وارد کنید؛ جایگزین تخمین می‌شود.</div></details>`;
 }
 
 function scheduleTab(site, sum, est) {
@@ -838,7 +877,7 @@ function onPanelClick(e) {
     case 'inv-add':
       state.mapMode = state.mapMode === 'addStructure' ? null : 'addStructure';
       document.body.classList.toggle('picking', !!state.mapMode);
-      setModeHint(state.mapMode ? 'روی محل سازه موجود کلیک کنید' : null);
+      setModeHint(state.mapMode ? (matchMedia('(pointer: coarse)').matches ? 'انگشت را روی محل سازه نگه دارید تا ثبت شود' : 'روی محل سازه موجود کلیک کنید') : null);
       if (state.mapMode && map.getZoom() < 14) map.setZoom(14);
       renderPanel(); break;
     case 'inv-focus': {
@@ -1443,12 +1482,14 @@ function structPopup(st, r) {
   if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, imp: pe.ev.dailyImp, exp: pe.ev.exp };
   const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span>امتیاز <b>${r.score}</b></span><span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه</span></div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
   const e = state.plan.entries?.find(x => x.id === st.id);
-  const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${st.priceEstimated && st.priceSource !== 'manual' ? ' · برآورد منبع' : ''}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
+  const priceNote = st.priceSource === 'manual' ? '' : st.agency ? ` · ${esc(st.site || 'نرخ‌نامه آژانس')}` : st.priceEstimated ? ` · <span title="${esc(st.priceBasis || '')}${st.sourcePrice ? ` — قیمت منبع: ${toman(st.sourcePrice)}` : ''}">برآورد</span>` : '';
+  const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${priceNote}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
+  const avail = st.agency && (st.reservedUntil || st.window) ? `<div class="pop-avail">${icon('clock')} ${st.reservedUntil ? `رزرو تا ${esc(st.reservedUntil)}` : 'آزاد'}${st.window ? ` · قابل اکران ${esc(st.window)}` : ''}${st.code ? ` · کد ${esc(st.code)}` : ''}</div>` : '';
   const addr = st.address && st.address !== st.name ? `<div class="pop-addr">${esc(st.address)}</div>` : '';
   const loc = locApprox(st) ? `<div class="pop-warn">${icon('target')} ${LOC_FA[st.loc] || 'مکان تقریبی'}${st.locNote ? ` (${esc(st.locNote)})` : ''} — با «جابه‌جا کردن» اصلاح کنید</div>` : '';
   const hs = hot?.at(st.lat, st.lng);
   const hsLine = hs ? `<button class="pop-hot" data-act="hs-open" data-id="${hs.id}">${icon('flame')} داخل هات‌اسپات «${esc(hs.title)}» · پتانسیل ${hs.score}</button>` : '';
-  return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${loc}${hsLine}${stats}
+  return `<b>${esc(st.name)}</b><div class="pop-sub">${TYPE_FA[st.type] || 'سازه'} · ${SOURCE_FA[st.source] || ''}${st.owner ? ' · ' + esc(st.owner) : ''}${st.w && st.h ? ` · <bdi dir="ltr">${st.w}×${st.h}</bdi> م` : ''}</div>${addr}${price}${avail}${loc}${hsLine}${stats}
     <button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${st.lat}" data-lng="${st.lng}" data-kind="${st.type}" data-name="${esc(st.name)}" data-price="${st.price || ''}">${icon('target')} تحلیل کامل</button>
     <button class="pop-geo" data-act="geo-copy" data-lat="${st.lat}" data-lng="${st.lng}" title="دایره ${SMS_POINT_RADIUS} متری دور سازه با قالب پنل پیامک لوکیشن: [[lng,lat],…]">${icon('copy')} مختصات برای پیامک لوکیشن (شعاع ${SMS_POINT_RADIUS} م)</button>
     ${st.source !== 'osm' && !state.settings.unlockMove ? `<button class="pop-move ${unlockedIds.has(st.id) ? 'on' : ''}" data-act="unlock-move" data-id="${esc(st.id)}">${icon(unlockedIds.has(st.id) ? 'unlock' : 'lock')} ${unlockedIds.has(st.id) ? 'آزاد است؛ نشانگر را بکشید (بعد از رها کردن دوباره قفل می‌شود)' : 'جابه‌جا کردن این سازه'}</button>` : ''}`;
@@ -2001,7 +2042,7 @@ function pricesHTML() {
   revalue();
   const evById = new Map((P.entries || []).map(e => [e.id, e]));
   const list = state.inventory.filter(x => !q || x.name.includes(q) || (x.owner || '').includes(q) || (x.address || '').includes(q));
-  const PS = { feed: 'فید', manual: 'دستی', import: 'فایل', market: 'بازار' };
+  const PS = { feed: 'فید', manual: 'دستی', import: 'فایل', market: 'بازار', agency: 'نرخ‌نامه آژانس' };
   const priceRows = list.slice(0, 200).map(x => {
     const d = x.prevPrice && x.price ? x.price / x.prevPrice - 1 : null;
     const e = evById.get(x.id);
@@ -2010,7 +2051,7 @@ function pricesHTML() {
       <td><div class="inp-wrap sm"><input class="inp ltr inp-sm" inputmode="numeric" data-act="pr-price" data-k="negotiated" data-id="${x.id}" value="${x.negotiated ? num(x.negotiated) : ''}" placeholder="—" aria-label="قیمت مذاکره‌شده"></div></td>
       <td>${coefSelect(x.id, x.coef || 1)}</td>
       <td>${e?.fair ? toman(e.fair) : '—'}</td><td>${valueChip(e?.valueIdx)}</td>
-      <td>${x.priceSource ? `<span class="chip ${x.priceSource === 'manual' ? 'warn' : ''}">${PS[x.priceSource] || x.priceSource}${x.site && x.priceSource === 'market' ? ' · ' + esc(x.site) : ''}</span>` : '—'}${x.priceEstimated && x.priceSource !== 'manual' ? ' <span class="chip" title="قیمت را خود منبع با فرمول برآورد کرده">برآورد</span>' : ''}</td>
+      <td>${x.priceSource ? `<span class="chip ${x.priceSource === 'manual' ? 'warn' : ''}">${PS[x.priceSource] || x.priceSource}${x.site && (x.priceSource === 'market' || x.priceSource === 'agency') ? ' · ' + esc(x.site) : ''}</span>` : '—'}${x.priceEstimated && x.priceSource !== 'manual' ? ` <span class="chip" title="${esc(x.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}${x.sourcePrice ? ` — قیمت منبع: ${toman(x.sourcePrice)}` : ''}">برآورد</span>` : ''}</td>
       <td>${priceAge(x.priceUpdated)}</td>
       <td class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d == null || Math.abs(d) < 0.001 ? '—' : pct(d)}</td></tr>`;
   }).join('');
@@ -2207,15 +2248,18 @@ async function setDistrictLayer(on) {
       poly._dn = d.n;
       poly.on('mouseover', () => { if (!poly._on) poly.setStyle({ fillOpacity: 0.14 }); });
       poly.on('mouseout', () => { if (!poly._on) highlightDistricts(); });
+      poly.on('contextmenu', ev => { L.DomEvent.stopPropagation(ev); map.fire('contextmenu', { latlng: ev.latlng, originalEvent: ev.originalEvent }); });
       poly.on('click', ev => {
         L.DomEvent.stopPropagation(ev);
-        if (state.mapMode === 'addStructure') { map.fire('click', { latlng: ev.latlng }); return; }
+        if (state.mapMode === 'addStructure') { map.fire('click', { latlng: ev.latlng, originalEvent: ev.originalEvent }); return; }
         // clicking a district selects it as the ranking scope (shift/ctrl adds to the selection)
+        // on a phone a tap only shows the district; choosing it as the scope is a button (no change by accident)
         const add = ev.originalEvent && (ev.originalEvent.shiftKey || ev.originalEvent.ctrlKey || ev.originalEvent.metaKey);
-        const S = state.scope;
-        selectDistricts(add ? [...new Set([...(S.mode === 'district' ? S.districts : []), d.n])] : [d.n], { fit: false });
+        const S = state.scope, touch = matchMedia('(pointer: coarse)').matches;
+        if (!touch) selectDistricts(add ? [...new Set([...(S.mode === 'district' ? S.districts : []), d.n])] : [d.n], { fit: false });
         const n = (state.plan.entries || []).filter(x => x.src === 'inv' && x.district === d.n).length;
-        L.popup({ autoPan: false }).setLatLng(ev.latlng).setContent(`<b>منطقه ${d.n}</b><div class="pop-sub">${esc(d.fa)}${d.approx ? ' · مرز تقریبی' : ''}</div><div class="pop-stats"><span><b>${n}</b> سازه · رتبه‌ها در پنل</span></div><button class="btn btn-ghost btn-block" data-act="district-board" data-n="${d.n}">${icon('sort')} لیدربورد کامل منطقه ${d.n}</button><button class="btn btn-ghost btn-block" style="margin-top:6px" data-act="district-analyze" data-lat="${ev.latlng.lat}" data-lng="${ev.latlng.lng}">${icon('target')} تحلیل همین نقطه</button>`).openOn(map);
+        const pick = touch ? `<button class="btn btn-primary btn-block" style="margin-bottom:6px" data-act="district-pick" data-n="${d.n}">${icon('check')} ${S.mode === 'district' && S.districts.includes(d.n) ? 'حذف از مناطق انتخاب‌شده' : S.mode === 'district' && S.districts.length ? 'افزودن به مناطق انتخاب‌شده' : 'انتخاب این منطقه'}</button>` : '';
+        L.popup({ autoPan: false }).setLatLng(ev.latlng).setContent(`<b>منطقه ${d.n}</b><div class="pop-sub">${esc(d.fa)}${d.approx ? ' · مرز تقریبی' : ''}</div><div class="pop-stats"><span><b>${n}</b> سازه · رتبه‌ها در پنل</span></div>${pick}<button class="btn btn-ghost btn-block" data-act="district-board" data-n="${d.n}">${icon('sort')} لیدربورد کامل منطقه ${d.n}</button><button class="btn btn-ghost btn-block" style="margin-top:6px" data-act="district-analyze" data-lat="${ev.latlng.lat}" data-lng="${ev.latlng.lng}">${icon('target')} تحلیل همین نقطه</button>`).openOn(map);
       });
       poly.addTo(districtLayer);
       L.marker(d.center, { interactive: false, pane: 'markerPane', icon: L.divIcon({ className: '', iconSize: null, html: `<div class="district-lbl">منطقه ${d.n}</div>` }) }).addTo(districtLayer);
@@ -2296,7 +2340,7 @@ function boardHTML() {
       <td>${r.district ?? '—'}</td><td class="rd" title="${esc(r.road || '')}">${esc(r.road || '—')}</td><td>${TYPE_FA[r.type] || '—'}</td><td>${esc(r.owner || (r.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
       <td><span class="mini-score" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${r.score}</span></td>
       <td>${num(r.ev.dailyImp)}</td><td>${num1(r.ev.exp)}</td><td>${r.sight ? num(r.sight) + ' م' : '—'}</td>
-      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ' <span class="chip" title="قیمت را خود منبع با فرمول برآورد کرده">برآورد</span>' : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td>
+      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td>
       <td>${valueChip(r.valueIdx, r.approx)}</td><td>${r.fair ? toman(r.fair) : '—'}</td><td>${r.src === 'inv' ? coefSelect(r.id, r.coef || 1) : '—'}</td><td>${priceAge(r.priceUpdated)}</td>
       <td>${r.clutter || 0}</td></tr>`;
   }).join('');
@@ -2602,12 +2646,27 @@ async function startTask(key) {
 
 function openHelp() {
   const d = $('#dlgHelp');
-  d.innerHTML = `<div class="dlg-head"><h2>روش محاسبه</h2><button class="icon-btn" data-close aria-label="بستن">${icon('close')}</button></div>
+  const touch = matchMedia('(pointer: coarse)').matches;
+  d.innerHTML = `<div class="dlg-head"><h2>راهنما و روش محاسبه</h2><button class="icon-btn" data-close aria-label="بستن">${icon('close')}</button></div>
   <div class="dlg-body">
+    <h3>کار با سایت، قدم به قدم</h3>
+    <ol class="help-steps">
+      <li><b>شهر را انتخاب کنید</b> (منوی کنار نام سایت). هر شهر سازه‌ها، قیمت‌ها و نقاط ذخیره‌شده خودش را دارد.</li>
+      <li><b>محدوده را مشخص کنید</b>: در تب «بهترین سازه‌ها» یکی از «کل شهر»، «مناطق شهرداری» یا «محدوده نقشه». سازه‌ها بر اساس ایمپرشن، ارزش خرید یا CPM مرتب می‌شوند.</li>
+      <li><b>هر سازه را باز کنید</b>: قیمت، منبع قیمت (نرخ‌نامه آژانس یا برآورد)، ایمپرشن روزانه و ماهانه و هات‌اسپات اطرافش را می‌بینید. «تحلیل کامل» جزئیات ساعت‌به‌ساعت و بخش «این عددها چطور حساب شد» را نشان می‌دهد.</li>
+      <li><b>نقطه دلخواه را تحلیل کنید</b>: ${touch ? 'انگشت را روی نقشه <b>نگه دارید</b>' : 'روی نقشه کلیک (یا کلیک راست) کنید'}. ${touch ? 'یک ضربه کوتاه چیزی اضافه نمی‌کند تا هنگام جابه‌جا کردن نقشه اشتباهی نقطه یا سازه ثبت نشود.' : ''}</li>
+      <li><b>کمپین بچینید</b>: در «کمپین با بودجه» بودجه و مدت را بدهید؛ بهترین ترکیب سازه‌ها انتخاب می‌شود. «دستیار کمپین» همین کار را از یک جمله فارسی انجام می‌دهد.</li>
+      <li><b>هات‌اسپات‌ها</b> (آیکون شعله): جاهای تجمع مردم برای تبلیغ هدفمند؛ مختصات هر محدوده را برای پیامک لوکیشن، GeoJSON یا KML کپی کنید.</li>
+      <li><b>اصلاح داده</b>: قیمت قطعی، تعداد خط یا حجم تردد واقعی را که می‌دانید وارد کنید؛ جایگزین تخمین می‌شود. سازه‌ها قفل‌اند؛ برای جابه‌جایی «جابه‌جا کردن این سازه» را در پنجره‌اش بزنید.</li>
+    </ol>
     <h3>1. تردد</h3>
     <p>با کلیک روی نقشه، نزدیک‌ترین معبر اصلی از OpenStreetMap پیدا می‌شود (نوع معبر، تعداد خط، سقف سرعت، یک‌طرفه بودن). تردد روزانه هر جهت = تعداد خط × ظرفیت روزانه هر خط برای آن نوع معبر در شرایط تهران. توزیع ساعتی با پروفایل ترافیک تهران انجام می‌شود و سقف ظرفیت ساعتی هر خط رعایت می‌شود (مازاد به ساعت بعد منتقل می‌شود).</p>
     <table class="mini"><tr><th>نوع معبر</th><th>خودرو/خط/روز</th><th>خط پیش‌فرض در هر جهت</th><th>سرعت آزاد</th></tr>
       ${Object.values(ROAD_CLASSES).slice(0, 5).map(c => `<tr><td>${c.fa}</td><td class="ltr">${num(c.laneDaily)}</td><td>${c.lanes}</td><td><bdi dir="ltr">${c.freeFlow} km/h</bdi></td></tr>`).join('')}</table>
+    <ul>
+      <li><b>تعداد خط</b>: اول تگ lanes در OpenStreetMap؛ اگر نبود، از عرض ثبت‌شده معبر (هر 3.4 متر یک خط)؛ اگر آن هم نبود، پیش‌فرض نوع معبر (جدول بالا). برای بزرگراه‌های دوطرفه هر جهت جدا حساب می‌شود و فقط جهتی که تابلو را می‌بیند در ایمپرشن می‌آید (در نرخ‌نامه‌ها از روی «غرب به شرق» و مانند آن).</li>
+      <li><b>ساعت به ساعت</b>: تقاضای روزانه با الگوی 24 ساعته (نشان برای همان نقطه یا پروفایل تهران) بین ساعت‌ها پخش می‌شود. هر خط در ساعت حداکثر ${num(1900)} خودرو در بزرگراه و ${num(950)} در شریانی اصلی عبور می‌دهد. وقتی سرعت زیر نصف سرعت آزاد است، ظرفیت عبور طبق منحنی سرعت–جریان کم می‌شود (4×r×(1−r)) و خودروهای مانده به ساعت بعد منتقل می‌شوند. برای همین ساعت‌های قفل ترافیک تردد کمتر ولی زمان مواجهه بیشتری دارند.</li>
+    </ul>
     <h3>2. سرعت و زمان مواجهه</h3>
     <p>سرعت هر ساعت = سرعت آزاد × ضریب ترافیک آن ساعت. ضریب از الگوی 24 ساعته نشان (در صورت وجود کلید) یا پروفایل پیش‌فرض تهران می‌آید و با «سرعت معمول» مسیر در نشان کالیبره می‌شود.</p>
     <div class="formula">پنجره دید (متر) = کمترینِ «فاصله خوانایی» و «طول دید مستقیم جاده» − نقطه‌ای که تابلو از دید راحت خارج می‌شود<br>زمان مواجهه (ثانیه) = پنجره دید ÷ سرعت — مثلاً 220 متر با سرعت <bdi dir="ltr">80 km/h</bdi> ≈ 10 ثانیه؛ در ترافیک <bdi dir="ltr">20 km/h</bdi> ≈ 40 ثانیه.</div>
@@ -2637,6 +2696,13 @@ function openHelp() {
       <li><b>انتخاب و اشتراک</b>: با تیک کنار هر هات‌اسپات چند تا را انتخاب کنید، فقط همان‌ها را روی نقشه نگه دارید، مختصاتشان را یک‌جا کپی کنید یا لینکش را برای همکار بفرستید. دکمه‌های «برای تبلیغ چه چیزی؟» نوع‌های مناسب هر دسته کالا را یک‌جا انتخاب می‌کنند. پاپ‌آپ هر هات‌اسپات سازه‌های داخل محدوده و سازه‌های مسیر رسیدن (تا 900 متر) را با امتیاز و قیمت نشان می‌دهد؛ «اوج حضور» الگوی معمول هر نوع مکان است، نه داده اندازه‌گیری‌شده.</li>
       <li>کامل بودن داده به ثبت مغازه‌ها در OpenStreetMap بستگی دارد؛ بعضی راسته‌ها کمتر از واقع دیده می‌شوند.</li>
     </ul>
+    <h3>قیمت‌ها</h3>
+    <ul>
+      <li><b>نرخ‌نامه آژانس</b>: سازه‌های نرخ‌نامه (فعلاً رسش، 1405/08/03، 129 سازه در تهران) با قیمت 30 روزه همان نرخ‌نامه، کد، تاریخ آزاد شدن از رزرو و بازه «قابل اکران» می‌آیند. جای آن‌ها از روی نشانی (بزرگراه × تقاطع یا نشانه شهری) پیدا شده و «مکان تقریبی» دارند.</li>
+      <li><b>برآورد بقیه سازه‌ها</b>: قیمت آگهی‌های باز قدیمی است (روی همان بزرگراه حدود 20 تا 40 برابر کمتر از نرخ امروز). از روی نرخ‌نامه یک مدل ساخته می‌شود: قیمت بر اساس متراژ تابلو، نوع (بیلبورد، پل عابر، پل سواره، عمودی) و بزرگراه. قیمت هر سازه دیگر = نیمی از این مدل و نیمی از قیمت قدیمی خودش به سطح امروز (میانگین هندسی). این قیمت‌ها برچسب «برآورد» دارند و با نگه داشتن ماوس روی آن، مبنا و قیمت منبع دیده می‌شود. شهرهای دیگر فعلاً با همان سطح تهران × نسبت قیمت خودشان برآورد می‌شوند.</li>
+      <li><b>ارزش خرید</b> = قیمت منصفانه ÷ قیمت. قیمت منصفانه از برازش قیمت‌های واقعی (نرخ‌نامه) بر ایمپرشن ماهانه به دست می‌آید؛ بالای 1 یعنی این سازه برای مخاطبی که می‌آورد ارزان‌تر از بازار است.</li>
+      <li>هر نرخ‌نامه تازه‌ای که از آژانس‌ها بگیرید به همین روش اضافه می‌شود و برآوردها را دقیق‌تر می‌کند.</li>
+    </ul>
     <h3>7. شهرهای دیگر</h3>
     <p>کرج، اصفهان، مشهد، شیراز، کرمان، یزد، ساری و گرگان از منوی شهر (کنار نام سایت) باز می‌شوند. هر شهر فهرست سازه‌ها، قیمت‌ها، نقاط ذخیره‌شده، هات‌اسپات‌ها و گفتگوی دستیار جدای خودش را دارد و همه امکانات تهران روی آن کار می‌کند. حجم تردد شهرها با مدل تهران × یک ضریب برآوردی حساب می‌شود (کرج و اصفهان 0.75، مشهد 0.8، شیراز 0.7، کرمان و یزد 0.55، ساری و گرگان 0.5) و الگوی ساعتی با داده نشان هر شهر به‌مرور جایگزین می‌شود. منبع آگهی‌ها برای کرمان، ساری و گرگان سازه کمی داخل شهر دارد («داده محدود»). یزد و گرگان مرز مناطق شهرداری در OpenStreetMap ندارند. سازه‌هایی که آگهی‌شان مختصات ندارد از روی نشانی (میدان، محله، نشانه شهری یا تقاطع دو خیابان) روی نقشه می‌آیند و «مکان تقریبی» علامت می‌خورند. پتانسیل هات‌اسپات‌ها در هر شهر نسبت به خود همان شهر سنجیده می‌شود؛ عدد کم‌رنگ «+» کنار هر نوع یعنی چند مورد دیگر با پتانسیل کمتر پنهان است.</p>
     <h3>محدودیت‌ها</h3>
@@ -2644,7 +2710,7 @@ function openHelp() {
       <li>حجم تردد مدل‌سازی شده است؛ اگر آمار شمارش واقعی دارید، در «مشخصات معبر» وارد کنید تا جایگزین شود.</li>
       <li>مانع دید (درخت، ساختمان) دیده نمی‌شود و شلوغی بصری فقط از روی تعداد تابلوهای نزدیک تخمین زده می‌شود؛ پیش از قرارداد بازدید میدانی کنید.</li>
       <li>مکان بخشی از سازه‌های بازار تقریبی است (حاشیه خط‌چین)؛ ترافیک و ارزش خرید آن‌ها هم تقریبی است.</li>
-      <li>قیمت‌ها قیمت اعلام‌شده در آگهی‌ها هستند و ممکن است قدیمی باشند؛ پیش از خرید استعلام بگیرید.</li>
+      <li>قیمت‌های نرخ‌نامه قیمت اعلامی آژانس‌اند و قیمت‌های «برآورد» تخمین مدل با خطای حدود ±30٪؛ پیش از خرید استعلام بگیرید.</li>
       <li>همپوشانی مخاطب بین چند نقطه کسر نمی‌شود؛ مجموع ایمپرشن‌ها برابر ریچ یکتا نیست.</li>
     </ul>
   </div>`;
@@ -2693,6 +2759,11 @@ function bindChrome() {
     if (unlockedIds.has(id)) toast('این سازه آزاد شد؛ نشانگرش را بکشید و رها کنید', 'ok');
   });
   document.addEventListener('click', e => {
+    const pk = e.target.closest('[data-act="district-pick"]');
+    if (pk) {
+      map.closePopup(); const n = +pk.dataset.n, S = state.scope, cur = S.mode === 'district' ? S.districts : [];
+      selectDistricts(cur.includes(n) ? cur.filter(x => x !== n) : [...cur, n], { fit: false }); return;
+    }
     const b = e.target.closest('[data-act="district-board"], [data-act="district-analyze"]');
     if (!b) return;
     map.closePopup();

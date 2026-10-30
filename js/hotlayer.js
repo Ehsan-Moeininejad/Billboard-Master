@@ -201,6 +201,8 @@ export function createHotspots(ctx) {
       });
       c.bindTooltip(`<b>${esc(h.title)}</b><br><span class="hs-tt">${esc(TYPE_BY_KEY[h.t].short)} · پتانسیل ${LEVEL_FA[h.lvl]}</span>`, { direction: 'top', sticky: true, className: 'hs-tip' });
       c.on('click', ev => { L.DomEvent.stopPropagation(ev); openPopup(h); });
+      // a long press (right-click) inside a hotspot still means «analyse / add here»
+      c.on('contextmenu', ev => { L.DomEvent.stopPropagation(ev); map.fire('contextmenu', { latlng: ev.latlng, originalEvent: ev.originalEvent }); });
       c.addTo(H.layer);
     });
     // names of the strongest hotspots once the map is close enough to read them
@@ -257,13 +259,15 @@ export function createHotspots(ctx) {
     </div>`;
   }
   function openPopup(h) {
-    L.popup({ maxWidth: 320, autoPanPaddingTopLeft: [60, 80], autoPanPaddingBottomRight: matchMedia('(max-width: 860px)').matches ? [10, Math.round(innerHeight * 0.5)] : [440, 20] }).setLatLng([h.lat, h.lng]).setContent(popupHTML(h)).openOn(map);
+    L.popup({ maxWidth: Math.min(320, innerWidth - 48), keepInView: true, autoPanPaddingTopLeft: [matchMedia('(max-width: 860px)').matches ? 12 : 60, 80], autoPanPaddingBottomRight: matchMedia('(max-width: 860px)').matches ? [10, Math.round(innerHeight * 0.5)] : [440, 20] }).setLatLng([h.lat, h.lng]).setContent(popupHTML(h)).openOn(map);
   }
   function focus(h) {
     if (matchMedia('(max-width: 860px)').matches) { $('#hotPop').hidden = true; $('#btnHot')?.classList.remove('on'); }
     const b = L.latLngBounds(ringsOf(h).flat()).pad(0.35);
+    // open once the map has stopped moving, so the popup can pan itself fully into view (phones)
+    let opened = false; const go = () => { if (!opened) { opened = true; openPopup(h); } };
+    map.once('moveend', () => setTimeout(go, 30)); setTimeout(go, 1500);
     map.flyToBounds(b, { maxZoom: 16, duration: 0.5 });
-    setTimeout(() => openPopup(h), 600);
   }
 
   // ── panel ───────────────────────────────────────────────────

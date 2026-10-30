@@ -555,6 +555,7 @@ export function hotspotTitle(h) {
   if (h.t === 'food') return `رستوران و کافه${h.place ? ' · ' + h.place : ''}`;
   if (h.t === 'office') return `مرکز اداری و تجاری${h.place ? ' · ' + h.place : ''}`;
   if (h.t === 'health' && !h.name) return `مراکز درمانی${h.place ? ' · ' + h.place : ''}`;
+  if (h.t === 'transit' && h.name && !/ایستگاه|پایانه|ترمینال|راه.?آهن|مترو/.test(h.name)) return `${{ metro: 'ایستگاه مترو', rail: 'ایستگاه راه‌آهن', terminal: 'پایانه' }[h.sub] || 'ایستگاه'} ${h.name}`;
   if (h.name) return h.name;
   return `${T?.short || ''}${h.place ? ' · ' + h.place : ''}`;
 }

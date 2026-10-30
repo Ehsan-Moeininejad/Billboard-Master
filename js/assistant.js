@@ -35,10 +35,10 @@ const IDEAS = {
   reach: ['«هر چیزی که بخواهی، دیجی‌کالا»', `«خرید آنلاین، تحویل سریع در سراسر ${CITY.fa}»`],
 };
 const SUGGEST = [
-  IS_TEHRAN ? 'کمپین گوشی موبایل با بودجه 2 میلیارد برای 1 ماه در منطقه 3 و 6' : `کمپین گوشی موبایل در ${CITY.fa} با بودجه 1 میلیارد برای 1 ماه`,
+  IS_TEHRAN ? 'کمپین گوشی موبایل با بودجه 20 میلیارد برای 1 ماه در منطقه 3 و 6' : `کمپین گوشی موبایل در ${CITY.fa} با بودجه 10 میلیارد برای 1 ماه`,
   'برای محصولات مادر و کودک کجا بیلبورد بزنیم؟',
   'لوازم خانگی، 10 بیلبورد، یک ماه',
-  'کمپین آرایشی و بهداشتی نزدیک مال‌ها با بودجه 800 میلیون',
+  'کمپین آرایشی و بهداشتی نزدیک مال‌ها با بودجه 8 میلیارد',
 ];
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -229,7 +229,7 @@ export function createAssistant(ctx) {
           <div class="as-sugg">${SUGGEST.map(s => `<button data-as="sugg">${esc(s)}</button>`).join('')}</div></div>`}
         ${busy ? '<div class="as-msg ai as-wait"><span class="as-typing"><i></i><i></i><i></i></span><small>در حال پیدا کردن سازه‌ها و نوشتن پیشنهاد؛ تا حدود 30 ثانیه</small></div>' : ''}
       </div>
-      <form class="as-input" data-as="form"><textarea rows="2" placeholder="مثلاً: کمپین گوشی موبایل، 2 میلیارد، 1 ماه، منطقه 3 و 6" ${busy ? 'disabled' : ''}></textarea><button class="btn btn-primary" ${busy ? 'disabled' : ''}>${icon('back')}</button></form>`;
+      <form class="as-input" data-as="form"><textarea rows="2" placeholder="مثلاً: کمپین گوشی موبایل، 20 میلیارد، 1 ماه، منطقه 3 و 6" ${busy ? 'disabled' : ''}></textarea><button class="btn btn-primary" ${busy ? 'disabled' : ''}>${icon('back')}</button></form>`;
     if (!busy) el.querySelector('textarea')?.focus({ preventScroll: true });
   }
   function keysHTML() {

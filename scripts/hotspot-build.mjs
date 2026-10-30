@@ -8,7 +8,7 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { CITIES, cityDir } from '../js/cities.js';
-import { buildHotspots, roadNamer } from '../js/hotspots.js';
+import { buildHotspots, roadNamer, unpackRing } from '../js/hotspots.js';
 import { TAGS_BY_ID } from './poi-terms.mjs';
 import { curatedHotspots } from './curated.mjs';
 
@@ -68,6 +68,15 @@ export function buildCityHotspots(slug, { osm = null, roads = null } = {}) {
   const spots = [...osmEls, ...extra].filter(e => e.tags?.shop || /^(restaurant|fast_food|cafe|ice_cream|food_court)$/.test(e.tags?.amenity || ''))
     .map(e => [e.lat ?? (e.bounds.minlat + e.bounds.maxlat) / 2, e.lon ?? (e.bounds.minlon + e.bounds.maxlon) / 2]);
   const cur = curatedHotspots(slug, DIR, spots);
+  // a mapped cluster of the same kind inside a known street is the same place: the street outline replaces it
+  const inR = ([la, ln], ring) => { let ins = false; for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) { const [yi, xi] = ring[i], [yj, xj] = ring[j]; if ((yi > la) !== (yj > la) && ln < (xj - xi) * (la - yi) / (yj - yi) + xi) ins = !ins; } return ins; };
+  for (const c of cur) {
+    const rings = (c.cov[70]?.p || []).map(unpackRing);
+    for (let i = items.length - 1; i >= 0; i--) {
+      const h = items[i];
+      if (!h.curated && h.t === c.t && rings.some(r => inR([h.lat, h.lng], r))) { c.n = Math.max(c.n, h.n || 0); items.splice(i, 1); }
+    }
+  }
   cur.forEach((h, i) => { h.id = `c${i}`; items.push(h); });
   if (cur.length) console.log(`known streets: ${cur.map(h => h.place).join('، ')}`);
   items.sort((a, b) => b.score - a.score);

@@ -34,7 +34,7 @@ const byId = m => new Map((m?.items || []).map(x => [x.id, x]));
 const N = byId(now), P = byId(prev);
 const added = prev ? now.items.filter(x => !P.has(x.id)) : [];
 const removed = prev ? prev.items.filter(x => !N.has(x.id)) : [];
-const moves = prev ? now.items.filter(x => P.has(x.id) && x.price && P.get(x.id).price && x.price !== P.get(x.id).price)
+const moves = prev ? now.items.filter(x => P.has(x.id) && x.price && P.get(x.id).price && x.price !== P.get(x.id).price && (x.priceBasis || '') === (P.get(x.id).priceBasis || ''))
   .map(x => ({ x, from: P.get(x.id).price, d: x.price / P.get(x.id).price - 1 })).sort((a, b) => b.d - a.d) : [];
 const medNow = median(now.items.map(x => x.price)), medPrev = prev ? median(prev.items.map(x => x.price)) : null;
 const scraped = now.items.map(x => x.priceUpdated).filter(Boolean).sort().pop();
@@ -72,6 +72,7 @@ const alerts = [];
 if (scrapedAge != null && scrapedAge > 45) alerts.push(`قیمت‌ها ${num(scrapedAge)} روز است در منبع (Rasamap) تازه نشده‌اند. برای قیمت قطعی پیش از خرید استعلام بگیرید یا فید قیمت تیم را وصل کنید.`);
 if (prev && !added.length && !removed.length && !moves.length) alerts.push('این هفته در فهرست و قیمت‌ها تغییری نبود (منبع داده‌اش را تازه نکرده است).');
 if (!prev) alerts.push('اولین گزارش است؛ مقایسه با هفته قبل از گزارش بعدی شروع می‌شود.');
+if (prev && now.source?.calibration && !prev.source?.calibration) alerts.push(`قیمت‌ها از این هفته با نرخ ${now.source.calibration.from} به سطح امروز برده شدند (قیمت منبع × ${now.source.calibration.k.toFixed(1)} و مدل نرخ‌نامه)؛ تغییر میانه قیمت این هفته از همین است، نه از بازار.`);
 
 // ── html ───────────────────────────────────────────────────
 // Same visual system as the research-digest email (Digikala red, white cards on light grey) and the same

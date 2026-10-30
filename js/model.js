@@ -8,6 +8,8 @@ const CITY_VOLF = CITY.volF || 1;
 const LANE_HOUR_CAP = { motorway: 1900, trunk: 1700, primary: 950, secondary: 800, tertiary: 650,
   motorway_link: 1500, trunk_link: 1300, primary_link: 800 };
 
+const fromWidthOf = r => !r.lanes?.total && !r.lanes?.fwd && r.width > 4;
+
 export function tehranHour(d = new Date()) {
   try {
     return parseInt(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Tehran' }).format(d), 10);
@@ -21,11 +23,13 @@ export function directionsFor(site) {
   const ov = site.overrides || {};
   const b = r.bearing ?? 0;
   let fwdLanes, bwdLanes;
+  // no lanes tag but a mapped width: about 3.4 m per lane (shoulders and markings included)
+  const fromWidth = !r.lanes?.total && !r.lanes?.fwd && r.width > 4 ? Math.max(1, Math.round(r.width / 3.4)) : null;
   if (r.oneway) {
-    fwdLanes = r.lanes?.total ?? cls.lanes;
+    fwdLanes = r.lanes?.total ?? fromWidth ?? cls.lanes;
     bwdLanes = r.twinLanes ?? fwdLanes; // opposite carriageway of a split road
   } else {
-    const t = r.lanes?.total;
+    const t = r.lanes?.total ?? fromWidth;
     fwdLanes = r.lanes?.fwd ?? (t ? Math.max(1, Math.ceil(t / 2)) : Math.max(1, cls.lanes - 1));
     bwdLanes = r.lanes?.bwd ?? (t ? Math.max(1, Math.floor(t / 2)) : Math.max(1, cls.lanes - 1));
   }
@@ -159,13 +163,16 @@ export function estimate(site, settings, dayType = 'weekday') {
     const win = geo[k].window;
     const daily = (ov.dailyVolume ? ov.dailyVolume / facing.length : d.lanes * cls.laneDaily * CITY_VOLF) * adj.volF;
     const cap = d.lanes * (LANE_HOUR_CAP[r.cls] || 900);
-    // demand per hour, capped by capacity with spill-over into the following hours
+    // demand per hour, capped by what the road can pass at that hour's speed, with spill-over into the next hours.
+    // In a jam fewer cars pass than at capacity (speed–flow curve): above half the free-flow speed the road can
+    // carry its full capacity; below it, throughput falls as 4·r·(1−r) of capacity (r = speed ÷ free-flow).
+    const passable = h => { const rr = Math.max(0.05, Math.min(1, adj.ratio[h] * calib)); return cap * (rr >= 0.5 ? 1 : Math.max(0.35, 4 * rr * (1 - rr))); };
     const vol = new Array(24).fill(0);
     let carry = 0;
     for (let k = 0; k < 48; k++) {
       const h = k % 24;
       const want = (k < 24 ? daily * adj.share[h] : 0) + carry;
-      const take = Math.min(want, cap - vol[h]);
+      const take = Math.max(0, Math.min(want, passable(h) - vol[h]));
       vol[h] += take; carry = want - take;
     }
     let tot = 0;
@@ -181,7 +188,7 @@ export function estimate(site, settings, dayType = 'weekday') {
       H.vehicles += vol[h]; H.ots += ots; H.impressions += imp;
       tot += vol[h];
     }
-    return { ...d, dailyVehicles: tot };
+    return { ...d, dailyVehicles: tot, demand: daily, capacityHour: cap, peakHourVehicles: Math.max(...vol), laneSource: r.lanes?.total || r.lanes?.fwd ? 'osm' : fromWidthOf(r) ? 'width' : 'default' };
   });
 
   const sum = k => hourly.reduce((s, x) => s + x[k], 0);
