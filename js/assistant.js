@@ -4,9 +4,10 @@
 // Models are tried in order — the viewer's own free keys (OpenRouter, Gemini, Groq) first, then keyless
 // Pollinations — and if none answers, a built-in writer produces the text, so a reply always comes back.
 import { PRESETS } from './hotlayer.js';
-import { parseBrief, planCampaign, fmtToman } from './campaign.js';
+import { parseBrief, planCampaign, fmtToman, cityOf } from './campaign.js';
+import { CITIES } from './cities.js';
 import { TYPE_BY_KEY, BOURSE } from './hotspots.js';
-import { CITY, IS_TEHRAN, cityKey } from './city.js';
+import { CITY, IS_TEHRAN, cityKey, CITY_SLUG, cityUrl } from './city.js';
 
 const KEY_STORE = 'billboard-insight:ai-keys:v1';
 const CHAT_STORE = cityKey('billboard-insight:ai-chat:v1');
@@ -110,7 +111,7 @@ function providers(keys) {
 }
 
 const SYSTEM = `تو مشاور رسانه و تبلیغات محیطی تیم مارکتینگ دیجی‌کالا در شهر ${CITY.fa} هستی. فقط به فارسی و با اعداد لاتین (0-9) جواب بده، کوتاه و کاربردی (حداکثر 230 کلمه).
-داده‌ای که در پیام کاربر به شکل JSON می‌آید از موتور خود سایت است: هات‌اسپات‌های مرتبط (محل تجمع مخاطب) و سازه‌های بیلبورد پیشنهادی با قیمت ماهانه. فقط از همین سازه‌ها و محل‌ها نام ببر؛ سازه یا قیمت از خودت نساز.
+داده‌ای که در پیام کاربر به شکل JSON می‌آید از موتور خود سایت است: هات‌اسپات‌های مرتبط (محل تجمع مخاطب) و سازه‌های بیلبورد پیشنهادی با قیمت ماهانه. فقط از همین سازه‌ها و محل‌ها نام ببر؛ سازه، قیمت، منطقه، سرعت یا عدد دیگری از خودت نساز. شهر همیشه همان فیلد city در JSON است (${CITY.fa})؛ از شهر دیگری نام نبر. شماره منطقه را فقط اگر در JSON آمده بنویس. تیترهای طراحی درباره دسته کالای کمپین باشند، نه درباره نام محل‌ها.
 ساختار پاسخ: 1) **استراتژی** در 2-3 جمله؛ 2) **سازه‌های اولویت‌دار** (3 تا 5 مورد با دلیل کوتاه، با همان نام‌ها)؛ 3) **محل‌های هدف و زمان‌بندی**؛ 4) **ایده طراحی بیلبورد**: 2 تا 3 تیتر کوتاه (حداکثر 7 کلمه) و یک نکته طراحی متناسب با سرعت عبور. اگر سؤال ربطی به کمپین ندارد، کوتاه و بر اساس همین داده جواب بده.`;
 
 // ── assistant UI ────────────────────────────────────────────
@@ -134,7 +135,7 @@ export function createAssistant(ctx) {
 
   function contextJSON(params, R) {
     return JSON.stringify({
-      category: R.preset.fa, districts: params.districts?.length ? params.districts : `کل ${CITY.fa}`, budget_toman: params.budget || null, months: R.months,
+      city: CITY.fa, category: R.preset.fa, districts: params.districts?.length ? params.districts : `کل ${CITY.fa}`, budget_toman: params.budget || null, months: R.months,
       planned_total_toman: R.spent || null,
       hotspots: R.spots.slice(0, 8).map(h => ({ name: h.title, type: TYPE_BY_KEY[h.t].fa + (h.t === 'bourse' ? ` (${BOURSE[h.sub]?.fa})` : ''), district: h.dist ? `منطقه ${h.dist}` : null, potential: h.score, peak: ctx.hot.peak(h.t) })),
       billboards: R.plan.slice(0, 10).map(b => ({ name: b.st.name, type: b.st.type, owner: b.st.owner || '', district: ctx.districtOf(b.st.lat, b.st.lng) ? `منطقه ${ctx.districtOf(b.st.lat, b.st.lng)}` : null, monthly_toman: b.price, traffic_score: b.score, category_fit: b.fitPct, near: b.why ? `${b.why.h.title} (${b.why.d} m)` : '' })),
@@ -147,7 +148,7 @@ export function createAssistant(ctx) {
     const types = [...new Set(R.spots.slice(0, 6).map(h => h.t))];
     const lines = [
       `**استراتژی:** برای «${R.preset.fa}»${where}، ${R.spots.length} محل تجمع مرتبط پیدا شد${top.length ? `؛ قوی‌ترین‌ها: ${top.join('، ')}` : ''}. پیشنهاد روی سازه‌هایی است که داخل یا در مسیر رسیدن به این محل‌ها هستند و امتیاز ترافیکی بالاتری دارند.`,
-      R.plan.length ? `**برنامه:** ${R.plan.length} سازه${R.spent ? `، حدود ${fmtToman(R.spent)} تومان برای ${R.months} ماه${params.budget ? ` از بودجه ${fmtToman(params.budget)}` : ''}` : ''}. فهرست کامل و دلیل هر انتخاب در کارت پایین است.` : '**برنامه:** سازه‌ای با قیمت مشخص که در این محدوده و بودجه جا شود پیدا نشد؛ بودجه یا منطقه را تغییر دهید.',
+      R.plan.length ? `**برنامه:** ${R.plan.length} سازه${R.spent ? `، حدود ${fmtToman(R.spent)} تومان برای ${R.months} ماه${params.budget ? ` از بودجه ${fmtToman(params.budget)}` : ''}` : ''}. فهرست کامل و دلیل هر انتخاب در کارت پایین است.` : (ctx.structures().length ? `**برنامه:** سازه‌ای با قیمت مشخص که در این محدوده و بودجه جا شود پیدا نشد؛ بودجه یا منطقه را تغییر دهید.` : `**برنامه:** فهرست سازه‌های ${CITY.fa} هنوز بارگذاری نشده؛ چند ثانیه بعد «به‌روزرسانی» را بزنید.`),
       `**زمان‌بندی:** ${types.slice(0, 3).map(t => `${TYPE_BY_KEY[t].short}: ${ctx.hot.peak(t)}`).join(' · ')}`,
       `**ایده طراحی:** ${(IDEAS[R.preset.k] || IDEAS.reach).join(' یا ')}. در مسیرهای سریع حداکثر 7 کلمه، لوگو بزرگ و تضاد رنگ بالا؛ کنار بورس‌ها و مال‌ها می‌شود پیشنهاد قیمت یا تخفیف مشخص گذاشت.`,
     ];
@@ -164,8 +165,21 @@ export function createAssistant(ctx) {
     return { reply: reply || localText(params, R), via, R };
   }
 
+  // each city's structures and hotspots live on its own page: a brief for another city is carried over to that page
+  const PENDING = 'billboard-insight:assistant-pending';
+  function handOff(text, slug) {
+    const fa = CITIES[slug].fa;
+    msgs.push({ role: 'user', text });
+    msgs.push({ role: 'ai', text: `این برنامه برای **${fa}** است و سازه‌ها و هات‌اسپات‌های هر شهر در صفحه خودش است. صفحه ${fa} باز می‌شود و همین درخواست آنجا اجرا می‌شود.`, via: 'موتور داخلی سایت', goto: slug });
+    save(); render(); scrollToLast();
+    try { sessionStorage.setItem(PENDING, JSON.stringify({ text, slug, at: Date.now() })); } catch { /* the button below still works */ }
+    setTimeout(() => { location.href = cityUrl(slug); }, 1400);
+  }
+
   async function send(text, forced = null) {
     text = (text || '').trim(); if (!text || busy) return;
+    const target = forced ? null : cityOf(text, CITY_SLUG);
+    if (target && target !== CITY_SLUG) { handOff(text, target); return; }
     const params = forced || parseBrief(text);
     msgs.push({ role: 'user', text });
     busy = true; render(); scrollDown();
@@ -215,7 +229,7 @@ export function createAssistant(ctx) {
   function render() {
     const list = msgs.map((m, i) => m.role === 'user'
       ? `<div class="as-msg me">${esc(m.text)}</div>`
-      : `<div class="as-msg ai"><div class="as-txt">${md(m.text)}</div><div class="as-via">${esc(m.via || '')}</div>${card(i, m)}</div>`).join('');
+      : `<div class="as-msg ai"><div class="as-txt">${md(m.text)}</div>${m.goto && CITIES[m.goto] ? `<a class="btn btn-primary btn-block as-goto" href="${cityUrl(m.goto)}">${icon('back')} رفتن به ${CITIES[m.goto].fa}</a>` : ''}<div class="as-via">${esc(m.via || '')}</div>${card(i, m)}</div>`).join('');
     el.innerHTML = `
       <div class="as-head">
         <span class="as-title">${icon('spark')} دستیار کمپین</span>
@@ -278,6 +292,12 @@ export function createAssistant(ctx) {
     else if (a === 'more') { if (expanded.has(i)) expanded.delete(i); else expanded.add(i); const b0 = $('#asBody'), y = b0.scrollTop; render(); $('#asBody').scrollTop = y; }
     else if (a === 'rerun') { const m = msgs[i]; results.set(i, await run(m.params)); render(); }
   });
+
+  // a brief handed over from another city's page: open and run it here
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PENDING) || 'null');
+    if (p && p.slug === CITY_SLUG && Date.now() - p.at < 120000) { sessionStorage.removeItem(PENDING); setTimeout(() => { open(); send(p.text); }, 900); }
+  } catch { /* nothing pending */ }
 
   function open(opts = {}) {
     el.hidden = false; document.body.classList.add('as-open');
