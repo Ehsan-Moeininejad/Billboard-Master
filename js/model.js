@@ -9,6 +9,11 @@ const LANE_HOUR_CAP = { motorway: 1900, trunk: 1700, primary: 950, secondary: 80
   motorway_link: 1500, trunk_link: 1300, primary_link: 800 };
 
 const fromWidthOf = r => !r.lanes?.total && !r.lanes?.fwd && r.width > 4;
+// a mapped width often includes parking, sidewalks or the median; lanes read from it never exceed what the road
+// class can have in one direction
+const MAX_DIR_LANES = { motorway: 6, trunk: 5, primary: 4, secondary: 3, tertiary: 2, motorway_link: 2, trunk_link: 2, primary_link: 2 };
+// longest time one pass is counted as looking at the board (s); beyond it the attention curve is flat anyway
+export const EXPOSURE_CAP = 60;
 
 export function tehranHour(d = new Date()) {
   try {
@@ -25,13 +30,14 @@ export function directionsFor(site) {
   let fwdLanes, bwdLanes;
   // no lanes tag but a mapped width: about 3.4 m per lane (shoulders and markings included)
   const fromWidth = !r.lanes?.total && !r.lanes?.fwd && r.width > 4 ? Math.max(1, Math.round(r.width / 3.4)) : null;
+  const capW = n => (fromWidth && !r.lanes?.total ? Math.min(n, MAX_DIR_LANES[r.cls] || 3) : n);
   if (r.oneway) {
-    fwdLanes = r.lanes?.total ?? fromWidth ?? cls.lanes;
+    fwdLanes = capW(r.lanes?.total ?? fromWidth ?? cls.lanes);
     bwdLanes = r.twinLanes ?? fwdLanes; // opposite carriageway of a split road
   } else {
     const t = r.lanes?.total ?? fromWidth;
-    fwdLanes = r.lanes?.fwd ?? (t ? Math.max(1, Math.ceil(t / 2)) : Math.max(1, cls.lanes - 1));
-    bwdLanes = r.lanes?.bwd ?? (t ? Math.max(1, Math.floor(t / 2)) : Math.max(1, cls.lanes - 1));
+    fwdLanes = r.lanes?.fwd ?? capW(t ? Math.max(1, Math.ceil(t / 2)) : Math.max(1, cls.lanes - 1));
+    bwdLanes = r.lanes?.bwd ?? capW(t ? Math.max(1, Math.floor(t / 2)) : Math.max(1, cls.lanes - 1));
   }
   if (ov.lanes) { fwdLanes = ov.lanes; bwdLanes = ov.lanes; }
   const fwd = { key: 'fwd', bearing: b, lanes: fwdLanes, label: `ترافیک به سمت ${compassFa(b)}`, arrow: arrow(b) };
@@ -158,11 +164,13 @@ export function estimate(site, settings, dayType = 'weekday') {
   const { facing } = directionsFor(site);
   const geo = visibility(site, facing);
 
-  const hourly = Array.from({ length: 24 }, (_, h) => ({ h, vehicles: 0, ots: 0, impressions: 0, speed: 0, exposure: 0 }));
+  // view: person-seconds in front of the face (people × seconds); seen: the same for the people who notice it
+  const hourly = Array.from({ length: 24 }, (_, h) => ({ h, vehicles: 0, ots: 0, impressions: 0, speed: 0, exposure: 0, view: 0, seen: 0 }));
   const dirs = facing.map((d, k) => {
     const win = geo[k].window;
     const daily = (ov.dailyVolume ? ov.dailyVolume / facing.length : d.lanes * cls.laneDaily * CITY_VOLF) * adj.volF;
-    const cap = d.lanes * (LANE_HOUR_CAP[r.cls] || 900);
+    // a volume the user entered is a count, not a demand: the road already passed it, so no capacity limit
+    const cap = ov.dailyVolume ? Infinity : d.lanes * (LANE_HOUR_CAP[r.cls] || 900);
     // demand per hour, capped by what the road can pass at that hour's speed, with spill-over into the next hours.
     // In a jam fewer cars pass than at capacity (speed–flow curve): above half the free-flow speed the road can
     // carry its full capacity; below it, throughput falls as 4·r·(1−r) of capacity (r = speed ÷ free-flow).
@@ -175,10 +183,10 @@ export function estimate(site, settings, dayType = 'weekday') {
       const take = Math.max(0, Math.min(want, passable(h) - vol[h]));
       vol[h] += take; carry = want - take;
     }
-    let tot = 0;
+    let tot = 0, expSum = 0, unserved = carry;
     for (let h = 0; h < 24; h++) {
       const speed = Math.max(5, Math.min(freeFlow * 1.05, freeFlow * adj.ratio[h] * calib));
-      const exposure = Math.min(60, win / (speed / 3.6));
+      const exposure = Math.min(EXPOSURE_CAP, win / (speed / 3.6));
       const attention = 1 - Math.exp(-exposure / ATTENTION_TAU);
       const ots = vol[h] * occupancy;
       const imp = ots * notice * attention * loopShare;
@@ -186,9 +194,12 @@ export function estimate(site, settings, dayType = 'weekday') {
       H.speed = (H.speed * H.vehicles + speed * vol[h]) / ((H.vehicles + vol[h]) || 1);
       H.exposure = (H.exposure * H.vehicles + exposure * vol[h]) / ((H.vehicles + vol[h]) || 1);
       H.vehicles += vol[h]; H.ots += ots; H.impressions += imp;
-      tot += vol[h];
+      H.view += ots * exposure; H.seen += imp * exposure;
+      tot += vol[h]; expSum += vol[h] * exposure;
     }
-    return { ...d, dailyVehicles: tot, demand: daily, capacityHour: cap, peakHourVehicles: Math.max(...vol), laneSource: r.lanes?.total || r.lanes?.fwd ? 'osm' : fromWidthOf(r) ? 'width' : 'default' };
+    return { ...d, dailyVehicles: tot, demand: daily, unserved, capacityHour: cap, peakHourVehicles: Math.max(...vol), window: win,
+      avgExposure: tot ? expSum / tot : 0, ots: tot * occupancy,
+      laneSource: ov.lanes ? 'user' : r.lanes?.total || r.lanes?.fwd ? 'osm' : fromWidthOf(r) ? 'width' : 'default' };
   });
 
   const sum = k => hourly.reduce((s, x) => s + x[k], 0);
@@ -199,7 +210,8 @@ export function estimate(site, settings, dayType = 'weekday') {
 
   return {
     dayType, dirs, hourly, freeFlow, visDist: geo[0]?.legible, geo, notice, loopShare, calib,
-    daily: { vehicles, ots: sum('ots'), impressions: sum('impressions'), avgSpeed, avgExposure, peak },
+    daily: { vehicles, ots: sum('ots'), impressions: sum('impressions'), avgSpeed, avgExposure, peak,
+      viewSec: sum('view'), seenSec: sum('seen') },
   };
 }
 
@@ -221,6 +233,10 @@ export function summarize(site, settings) {
   const weeklyOts = days.reduce((s, e) => s + e.daily.ots, 0);
   const monthly = weekly * 30 / 7;
   const monthlyOts = weeklyOts * 30 / 7;
+  // exposure depth: hours people spend in front of the face (all of them / those who notice it)
+  const weeklyViewSec = days.reduce((s, e) => s + e.daily.viewSec, 0);
+  const weeklySeenSec = days.reduce((s, e) => s + e.daily.seenSec, 0);
+  const weeklyVehicles = days.reduce((s, e) => s + e.daily.vehicles, 0);
   const cpm = site.price ? site.price / (monthly / 1000) : null;
   const campaignWeeks = settings.campaignWeeks || 4;
 
@@ -233,11 +249,16 @@ export function summarize(site, settings) {
   if (site.overrides?.dailyVolume) { confidence = 4; sources.push('حجم تردد واردشده'); }
 
   const grid = days.map(e => e.hourly.map(h => h.impressions)); // 7 × 24, Saturday first
+  // how far off the estimate can be, by what it rests on (OSM lanes, Neshan pattern, Neshan speed, a real count)
+  const conf = Math.min(4, confidence);
+  const spread = [0, 0.45, 0.35, 0.25, 0.15][conf];
   return {
-    wk, th, fr, grid, weekly, weeklyOts, monthly, monthlyOts, cpm, score,
+    wk, th, fr, grid, weekly, weeklyOts, monthly, monthlyOts, cpm, score, spread,
+    weeklyVehicles, monthlyVehicles: weeklyVehicles * 30 / 7,
+    weeklyViewSec, weeklySeenSec, monthlyViewHours: weeklyViewSec * 30 / 7 / 3600, monthlySeenHours: weeklySeenSec * 30 / 7 / 3600,
     campaign: { weeks: campaignWeeks, impressions: weekly * campaignWeeks, ots: weeklyOts * campaignWeeks,
       cost: site.price ? site.price * campaignWeeks * 7 / 30 : null },
-    confidence: Math.min(4, confidence), sources,
+    confidence: conf, sources,
   };
 }
 

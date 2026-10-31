@@ -23,6 +23,7 @@ export function quick(site, settings) {
   const e = estimate(site, settings, 'weekday');
   return {
     imp: e.daily.impressions, veh: e.daily.vehicles, exp: e.daily.avgExposure, speed: e.daily.avgSpeed,
+    seen: e.daily.seenSec, view: e.daily.viewSec,
     score: scoreFrom(e.daily), sight: Math.min(...e.geo.map(g => g.sight)), window: e.geo[0]?.window,
     limited: e.geo.some(g => g.limitedBy === 'sight'),
   };

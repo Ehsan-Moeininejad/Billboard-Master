@@ -6,6 +6,9 @@
 import { PRESETS } from './hotlayer.js';
 import { parseBrief, planCampaign, fmtToman, cityOf } from './campaign.js';
 import { CITIES } from './cities.js';
+import { compact, num } from './fmt.js';
+const fmtCount = v => compact(v);
+const fmtNum = v => (v >= 10 ? num(v) : (Math.round(v * 10) / 10).toString());
 import { TYPE_BY_KEY, BOURSE } from './hotspots.js';
 import { CITY, IS_TEHRAN, cityKey, CITY_SLUG, cityUrl } from './city.js';
 
@@ -112,7 +115,7 @@ function providers(keys) {
 
 const SYSTEM = `تو مشاور رسانه و تبلیغات محیطی تیم مارکتینگ دیجی‌کالا در شهر ${CITY.fa} هستی. فقط به فارسی و با اعداد لاتین (0-9) جواب بده، کوتاه و کاربردی (حداکثر 230 کلمه).
 داده‌ای که در پیام کاربر به شکل JSON می‌آید از موتور خود سایت است: هات‌اسپات‌های مرتبط (محل تجمع مخاطب) و سازه‌های بیلبورد پیشنهادی با قیمت ماهانه. فقط از همین سازه‌ها و محل‌ها نام ببر؛ سازه، قیمت، منطقه، سرعت یا عدد دیگری از خودت نساز. شهر همیشه همان فیلد city در JSON است (${CITY.fa})؛ از شهر دیگری نام نبر. شماره منطقه را فقط اگر در JSON آمده بنویس. تیترهای طراحی درباره دسته کالای کمپین باشند، نه درباره نام محل‌ها.
-ساختار پاسخ: 1) **استراتژی** در 2-3 جمله؛ 2) **سازه‌های اولویت‌دار** (3 تا 5 مورد با دلیل کوتاه، با همان نام‌ها)؛ 3) **محل‌های هدف و زمان‌بندی**؛ 4) **ایده طراحی بیلبورد**: 2 تا 3 تیتر کوتاه (حداکثر 7 کلمه) و یک نکته طراحی متناسب با سرعت عبور. اگر سؤال ربطی به کمپین ندارد، کوتاه و بر اساس همین داده جواب بده.`;
+ساختار پاسخ: 1) **استراتژی** در 2-3 جمله؛ 2) **سازه‌های اولویت‌دار** (3 تا 5 مورد با دلیل کوتاه، با همان نام‌ها و هزینه هر ایمپرشن هرکدام از JSON)؛ در استراتژی ایمپرشن کل کمپین و هزینه هر ایمپرشن کل را هم بگو؛ 3) **محل‌های هدف و زمان‌بندی**؛ 4) **ایده طراحی بیلبورد**: 2 تا 3 تیتر کوتاه (حداکثر 7 کلمه) و یک نکته طراحی متناسب با سرعت عبور. اگر سؤال ربطی به کمپین ندارد، کوتاه و بر اساس همین داده جواب بده.`;
 
 // ── assistant UI ────────────────────────────────────────────
 export function createAssistant(ctx) {
@@ -136,9 +139,9 @@ export function createAssistant(ctx) {
   function contextJSON(params, R) {
     return JSON.stringify({
       city: CITY.fa, category: R.preset.fa, districts: params.districts?.length ? params.districts : `کل ${CITY.fa}`, budget_toman: params.budget || null, months: R.months,
-      planned_total_toman: R.spent || null,
+      planned_total_toman: R.spent || null, campaign_impressions: R.imps ? Math.round(R.imps) : null, cost_per_impression_toman: R.cpi ? Math.round(R.cpi) : null,
       hotspots: R.spots.slice(0, 8).map(h => ({ name: h.title, type: TYPE_BY_KEY[h.t].fa + (h.t === 'bourse' ? ` (${BOURSE[h.sub]?.fa})` : ''), district: h.dist ? `منطقه ${h.dist}` : null, potential: h.score, peak: ctx.hot.peak(h.t) })),
-      billboards: R.plan.slice(0, 10).map(b => ({ name: b.st.name, type: b.st.type, owner: b.st.owner || '', district: ctx.districtOf(b.st.lat, b.st.lng) ? `منطقه ${ctx.districtOf(b.st.lat, b.st.lng)}` : null, monthly_toman: b.price, traffic_score: b.score, category_fit: b.fitPct, near: b.why ? `${b.why.h.title} (${b.why.d} m)` : '' })),
+      billboards: R.plan.slice(0, 10).map(b => ({ name: b.st.name, type: b.st.type, owner: b.st.owner || '', district: ctx.districtOf(b.st.lat, b.st.lng) ? `منطقه ${ctx.districtOf(b.st.lat, b.st.lng)}` : null, monthly_toman: b.price, monthly_impressions: b.mImp ? Math.round(b.mImp) : null, cost_per_impression_toman: b.cpi ? Math.round(b.cpi) : null, traffic_score: b.score, category_fit: b.fitPct, near: b.why ? `${b.why.h.title} (${b.why.d} m)` : '' })),
     });
   }
 
@@ -148,7 +151,7 @@ export function createAssistant(ctx) {
     const types = [...new Set(R.spots.slice(0, 6).map(h => h.t))];
     const lines = [
       `**استراتژی:** برای «${R.preset.fa}»${where}، ${R.spots.length} محل تجمع مرتبط پیدا شد${top.length ? `؛ قوی‌ترین‌ها: ${top.join('، ')}` : ''}. پیشنهاد روی سازه‌هایی است که داخل یا در مسیر رسیدن به این محل‌ها هستند و امتیاز ترافیکی بالاتری دارند.`,
-      R.plan.length ? `**برنامه:** ${R.plan.length} سازه${R.spent ? `، حدود ${fmtToman(R.spent)} تومان برای ${R.months} ماه${params.budget ? ` از بودجه ${fmtToman(params.budget)}` : ''}` : ''}. فهرست کامل و دلیل هر انتخاب در کارت پایین است.` : (ctx.structures().length ? `**برنامه:** سازه‌ای با قیمت مشخص که در این محدوده و بودجه جا شود پیدا نشد؛ بودجه یا منطقه را تغییر دهید.` : `**برنامه:** فهرست سازه‌های ${CITY.fa} هنوز بارگذاری نشده؛ چند ثانیه بعد «به‌روزرسانی» را بزنید.`),
+      R.plan.length ? `**برنامه:** ${R.plan.length} سازه${R.spent ? `، حدود ${fmtToman(R.spent)} تومان برای ${R.months} ماه${params.budget ? ` از بودجه ${fmtToman(params.budget)}` : ''}` : ''}${R.imps ? `؛ حدود ${fmtCount(R.imps)} ایمپرشن${R.cpi ? `، هر ایمپرشن به‌طور میانگین ${fmtNum(R.cpi)} تومان` : ''}` : ''}. فهرست کامل و دلیل هر انتخاب در کارت پایین است.` : (ctx.structures().length ? `**برنامه:** سازه‌ای با قیمت مشخص که در این محدوده و بودجه جا شود پیدا نشد؛ بودجه یا منطقه را تغییر دهید.` : `**برنامه:** فهرست سازه‌های ${CITY.fa} هنوز بارگذاری نشده؛ چند ثانیه بعد «به‌روزرسانی» را بزنید.`),
       `**زمان‌بندی:** ${types.slice(0, 3).map(t => `${TYPE_BY_KEY[t].short}: ${ctx.hot.peak(t)}`).join(' · ')}`,
       `**ایده طراحی:** ${(IDEAS[R.preset.k] || IDEAS.reach).join(' یا ')}. در مسیرهای سریع حداکثر 7 کلمه، لوگو بزرگ و تضاد رنگ بالا؛ کنار بورس‌ها و مال‌ها می‌شود پیشنهاد قیمت یا تخفیف مشخص گذاشت.`,
     ];
@@ -203,7 +206,7 @@ export function createAssistant(ctx) {
     const shown = expanded.has(i) ? R.plan : R.plan.slice(0, 8);
     const rows = shown.map((b, k) => `<div class="as-row">
         <span class="as-n">${k + 1}</span>
-        <button class="as-main" data-as="board" data-id="${esc(b.st.id)}"><b>${esc(b.st.name)}</b><small>${b.price ? fmtToman(b.price) + ' در ماه' : 'بدون قیمت'}${b.score != null ? ` · امتیاز ${b.score}` : ''} · تناسب ${b.fitPct}${b.why ? ` · ${b.why.d ? `${b.why.d} م تا` : 'داخل'} ${esc(b.why.h.title)}` : ''}</small></button>
+        <button class="as-main" data-as="board" data-id="${esc(b.st.id)}"><b>${esc(b.st.name)}</b><small>${b.price ? fmtToman(b.price) + ' در ماه' : 'بدون قیمت'}${b.cpi ? ` · هر ایمپرشن ${fmtNum(b.cpi)} ت` : ''}${b.score != null ? ` · امتیاز ${b.score}` : ''} · تناسب ${b.fitPct}${b.why ? ` · ${b.why.d ? `${b.why.d} م تا` : 'داخل'} ${esc(b.why.h.title)}` : ''}</small></button>
         <button class="as-mini" title="تحلیل کامل" data-act="analyze-struct" data-lat="${b.st.lat}" data-lng="${b.st.lng}" data-kind="${esc(b.st.type || '')}" data-name="${esc(b.st.name)}" data-price="${b.st.price || ''}">${icon('target')}</button>
       </div>`).join('');
     return `<div class="as-card">
@@ -217,6 +220,7 @@ export function createAssistant(ctx) {
       <div class="as-sec">محل‌های هدف <b>${R.spots.length}</b></div>
       <div class="as-spots">${R.spots.slice(0, 8).map(h => `<button data-as="spot" data-i="${i}" data-id="${h.id}" style="--c:${TYPE_BY_KEY[h.t].color}"><i></i>${esc(h.title.length > 30 ? h.title.slice(0, 28) + '…' : h.title)}<small>${h.score}</small></button>`).join('') || '<span class="as-empty">محلی پیدا نشد</span>'}</div>
       <div class="as-sec">سازه‌های پیشنهادی <b>${R.plan.length}</b>${R.spent ? ` · ${fmtToman(R.spent)} تومان برای ${R.months} ماه` : ''}</div>
+      ${R.plan.length && R.imps ? `<div class="as-total"><span>ایمپرشن کل کمپین <b>${fmtCount(R.imps)}</b></span>${R.cpi ? `<span>هزینه هر ایمپرشن <b>${fmtNum(R.cpi)}</b> تومان</span><span>CPM <b>${fmtNum(R.cpi * 1000)}</b></span>` : ''}</div>` : ''}
       <div class="as-rows">${rows || '<span class="as-empty">سازه‌ای پیدا نشد</span>'}</div>
       ${R.plan.length > 8 ? `<button class="linkish as-more" data-as="more" data-i="${i}">${expanded.has(i) ? 'نمایش کمتر' : `نمایش همه ${R.plan.length} سازه`}</button>` : ''}
       <div class="as-acts">
@@ -284,8 +288,9 @@ export function createAssistant(ctx) {
     else if (a === 'show') { const R = results.get(i); if (R) { await ctx.hot.showOnly(R.spots.slice(0, 10)); ctx.toast(`${Math.min(10, R.spots.length)} محل هدف روی نقشه نمایش داده شد`, 'ok'); if (matchMedia('(max-width: 860px)').matches) close(); } }
     else if (a === 'copy') {
       const R = results.get(i); if (!R) return;
-      const head = ['#', 'سازه', 'نوع', 'مجری', 'منطقه', 'قیمت ماهانه (تومان)', 'امتیاز', 'تناسب با دسته', 'نزدیک‌ترین محل هدف', 'فاصله (متر)', 'lat', 'lng'];
-      const rows = R.plan.map((x, k) => [k + 1, x.st.name, x.st.type || '', x.st.owner || '', ctx.districtOf(x.st.lat, x.st.lng) ?? '', x.price || '', x.score ?? '', x.fitPct, x.why?.h.title || '', x.why?.d ?? '', x.st.lat, x.st.lng]);
+      const head = ['#', 'سازه', 'نوع', 'مجری', 'منطقه', 'قیمت ماهانه (تومان)', 'ایمپرشن ماهانه', 'هزینه هر ایمپرشن (تومان)', 'امتیاز', 'تناسب با دسته', 'نزدیک‌ترین محل هدف', 'فاصله (متر)', 'lat', 'lng'];
+      const rows = R.plan.map((x, k) => [k + 1, x.st.name, x.st.type || '', x.st.owner || '', ctx.districtOf(x.st.lat, x.st.lng) ?? '', x.price || '', x.mImp ? Math.round(x.mImp) : '', x.cpi ? Math.round(x.cpi) : '', x.score ?? '', x.fitPct, x.why?.h.title || '', x.why?.d ?? '', x.st.lat, x.st.lng]);
+      rows.push(['', `جمع کمپین (${R.months} ماه)`, '', '', '', R.spent || '', R.imps ? Math.round(R.imps) : '', R.cpi ? Math.round(R.cpi) : '', '', '', '', '', '', '']);
       ctx.copyText([head, ...rows].map(r => r.join('\t')).join('\n'), 'برنامه کپی شد؛ در اکسل یا گوگل‌شیت Paste کنید');
     }
     else if (a === 'redo') { const p = paramsFrom(i); const label = PRESETS.find(x => x.k === p.preset)?.fa; await send(`${label}${p.budget ? `، بودجه ${fmtToman(p.budget)}` : ''}، ${p.months} ماه${p.districts.length ? `، منطقه ${p.districts.join('، ')}` : ''}`, p); }

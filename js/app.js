@@ -20,7 +20,7 @@ import { PROVIDERS, anyConfigured } from './providers.js';
 import { summarize, directionsFor, tehranHour, CONFIDENCE_FA, visibility, legibleFor } from './model.js';
 import { nearestOnLine, walk, offsetLine, dist } from './geo.js';
 import { hourlyChart, multiLine, ring, heatmap, valueMap } from './charts.js';
-import { num, num1, compact, compactParts, toman, hourRange, hourLabel, esc, parseNum, scoreLabel } from './fmt.js';
+import { num, num1, compact, compactParts, toman, hourRange, hourLabel, esc, parseNum, scoreLabel, cpi, perImp } from './fmt.js';
 
 // The demo build (build/demo.mjs) defines __DEMO__ = true and swaps net.js for a simulated network.
 const DEMO = typeof __DEMO__ !== 'undefined' && __DEMO__;
@@ -100,7 +100,7 @@ async function init() {
     assistant = createAssistant({
       $, icon, toast, copyText, hot, focusStructure,
       structures: () => allStructures().filter(st => st.source !== 'osm'),
-      structInfo: st => { const r = rankById.get(st.id), pe = state.plan.entries?.find(x => x.id === st.id); return { score: pe?.score ?? r?.score ?? null, valueIdx: pe?.valueIdx ?? null, imp: pe?.ev?.dailyImp ?? r?.imp ?? null }; },
+      structInfo: st => { const r = rankById.get(st.id), pe = state.plan.entries?.find(x => x.id === st.id); return { score: pe?.score ?? r?.score ?? null, valueIdx: pe?.valueIdx ?? null, imp: pe?.ev?.dailyImp ?? r?.imp ?? null, mImp: pe?.ev?.weeklyImp ? pe.ev.weeklyImp * 30 / 7 : r?.imp ? r.imp * WEEK.reduce((a, d) => a + d.f, 0) * 30 / 7 : null }; },
       districtOf: (lat, lng) => state.districts ? districtOf(lat, lng, state.districts) : null,
       ensureScores: () => evaluateMarket(),
     });
@@ -419,9 +419,10 @@ function listHTML() {
         <div class="card-name">${esc(s.name)}${s.sample ? ' <span class="chip chip-xs">نمونه</span>' : ''}</div>
         <div class="card-meta">${esc(ROAD_CLASSES[s.road.cls]?.short || '')} · ${esc(FORMATS[s.format]?.fa || '')}</div>
         <div class="card-stats">
+          <span>${icon('car')} <b>${compact(sum.wk.daily.vehicles)}</b> خودرو</span>
           <span>${icon('eye')} <b>${compact(sum.wk.daily.impressions)}</b>/روز</span>
           <span><b>${num1(sum.wk.daily.avgExposure)}</b> ثانیه</span>
-          ${sum.cpm ? `<span>CPM <b>${compact(sum.cpm)}</b></span>` : ''}
+          ${sum.cpm ? `<span>CPM <b>${compact(sum.cpm)}</b></span><span>هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> ت</span>` : ''}
         </div>
       </div>
       <div class="card-side">
@@ -575,7 +576,9 @@ function summaryTab(site, sum, est) {
   const [impV, impU] = compactParts(d.impressions);
   const [vehV, vehU] = compactParts(d.vehicles);
   const [monV, monU] = compactParts(sum.monthly);
-  const exps = est.hourly.filter(h => h.vehicles > 50).map(h => h.exposure);
+  const exps0 = est.hourly.filter(h => h.vehicles > 50).map(h => h.exposure);
+  const exps = exps0.length ? exps0 : [d.avgExposure];
+  const att = d.ots ? d.impressions / d.ots : 0;
   const ins = insights(site, sum, est).map(t => `<li>${icon('spark')}<span>${t}</span></li>`).join('');
   return `<div class="p-sec">
     <div class="hero">
@@ -588,12 +591,14 @@ function summaryTab(site, sum, est) {
     </div>
     <div style="margin-top:14px">${daySeg()}</div>
     <div class="kpis">
-      <div class="kpi hl"><div class="kpi-l">${icon('eye')} ایمپرشن روزانه</div><div class="kpi-v">${impV}<small>${impU}</small></div><div class="kpi-s">دیده‌شدن مؤثر (VAC)</div></div>
+      <div class="kpi hl"><div class="kpi-l">${icon('eye')} ایمپرشن روزانه</div><div class="kpi-v">${impV}<small>${impU}</small></div><div class="kpi-s">دیده‌شدن مؤثر (VAC) · بازه ${compact(d.impressions * (1 - sum.spread))} تا ${compact(d.impressions * (1 + sum.spread))}</div></div>
       <div class="kpi"><div class="kpi-l">${icon('car')} تردد روزانه</div><div class="kpi-v">${vehV}<small>${vehU}</small></div><div class="kpi-s">${compact(d.ots)} نفر در معرض دید</div></div>
-      <div class="kpi"><div class="kpi-l">${icon('clock')} زمان مواجهه</div><div class="kpi-v">${num1(d.avgExposure)}<small>ثانیه</small></div><div class="kpi-s">از ${num1(Math.min(...exps))} تا ${num1(Math.max(...exps))} ثانیه</div></div>
+      <div class="kpi"><div class="kpi-l">${icon('clock')} زمان مواجهه</div><div class="kpi-v">${num1(d.avgExposure)}<small>ثانیه</small></div><div class="kpi-s">هر عبور؛ از ${num1(Math.min(...exps))} تا ${num1(Math.max(...exps))} ثانیه</div></div>
+      <div class="kpi"><div class="kpi-l">${icon('clock')} عمق مواجهه</div><div class="kpi-v">${compact(sum.monthlyViewHours)}<small>نفر-ساعت/ماه</small></div><div class="kpi-s">${num(d.viewSec / 3600)} نفر-ساعت در روز</div></div>
+      <div class="kpi"><div class="kpi-l">${icon('eye')} احتمال دیده‌شدن</div><div class="kpi-v">${Math.round(att * 100)}<small>٪</small></div><div class="kpi-s">از ${compact(d.ots)} نفر در معرض دید</div></div>
       <div class="kpi"><div class="kpi-l">${icon('speed')} میانگین سرعت</div><div class="kpi-v">${Math.round(d.avgSpeed)}<small>km/h</small></div><div class="kpi-s">سرعت آزاد <bdi dir="ltr">${Math.round(est.freeFlow)} km/h</bdi></div></div>
       <div class="kpi wide"><div><div class="kpi-l">${icon('board')} ایمپرشن ماهانه</div><div class="kpi-v">${monV}<small>${monU}</small></div></div>
-        <div style="text-align:left"><div class="kpi-l" style="justify-content:flex-end">${icon('money')} CPM</div><div class="kpi-v">${sum.cpm ? compact(sum.cpm) : '—'}<small>${sum.cpm ? 'تومان' : ''}</small></div>${sum.cpm ? '' : '<div class="kpi-s"><a href="#" data-act="go-price" style="color:var(--accent)">قیمت را وارد کنید</a></div>'}</div></div>
+        <div style="text-align:left"><div class="kpi-l" style="justify-content:flex-end">${icon('money')} CPM</div><div class="kpi-v">${sum.cpm ? compact(sum.cpm) : '—'}<small>${sum.cpm ? 'تومان' : ''}</small></div>${sum.cpm ? `<div class="kpi-s">هزینه هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> تومان</div>` : ''}${sum.cpm ? '' : '<div class="kpi-s"><a href="#" data-act="go-price" style="color:var(--accent)">قیمت را وارد کنید</a></div>'}</div></div>
     </div>
   </div>
   <div class="p-sec"><div class="sec-title"><span>بینش‌ها</span></div><ul class="insights">${ins}</ul></div>
@@ -604,26 +609,36 @@ function summaryTab(site, sum, est) {
 // step-by-step of how this estimate was reached (same numbers the model used)
 function howSec(site, sum, est) {
   const r = site.road, cls = ROAD_CLASSES[r.cls] || ROAD_CLASSES.secondary, d = est.daily;
-  const LS = { osm: 'از OpenStreetMap', width: `از عرض ثبت‌شده معبر (${num1(r.width)} م)`, default: `پیش‌فرض «${cls.short}»؛ اگر می‌دانید، در «سازه و هزینه» اصلاح کنید` };
-  const dirs = est.dirs.map(x => `${x.label.replace('ترافیک ', '')}: <b>${x.lanes}</b> خط (${LS[x.laneSource] || ''})`).join('<br>');
   const ov = site.overrides || {};
-  const demand = est.dirs.reduce((a, x) => a + x.demand, 0);
-  const cap = est.dirs.reduce((a, x) => a + x.capacityHour, 0);
+  const occ = state.settings.occupancy || 1.5;
+  const LS = { user: 'واردشده توسط شما', osm: 'تگ lanes در OpenStreetMap', width: `از عرض ثبت‌شده معبر (${num1(r.width)} م ÷ 3.4، با سقف نوع معبر)`, default: `پیش‌فرض «${cls.short}»؛ اگر می‌دانید، در «سازه و هزینه» اصلاح کنید` };
+  const dayF = { weekday: 1, thursday: 0.86, friday: 0.62 }[state.dayType] ?? 1;
+  const many = est.dirs.length > 1;
+  const per = (fn) => est.dirs.map((x, k) => `${many ? `<i class="how-dir">${esc(x.label.replace('ترافیک ', ''))}</i> ` : ''}${fn(x, est.geo[k] || {}, k)}`).join('<br>');
+  const speeds = est.hourly.filter(h => h.vehicles > 50).map(h => h.speed);
+  const vMax = speeds.length ? Math.max(...speeds) : est.freeFlow, vMin = speeds.length ? Math.min(...speeds) : est.freeFlow;
   const peakVeh = Math.max(...est.hourly.map(h => h.vehicles));
   const peakH = est.hourly.find(h => h.vehicles === peakVeh)?.h ?? 0;
   const att = d.ots ? d.impressions / d.ots : 0;
+  const perPerson = d.ots ? d.viewSec / d.ots : 0;
+  const lo = v => v * (1 - sum.spread), hi = v => v * (1 + sum.spread);
+  const fmtFace = g => g.spec ? `${num1(g.spec.w)}×${num1(g.spec.h)} م` : '';
   const steps = [
-    ['خطوطی که تابلو را می‌بینند', dirs],
-    ['تقاضای روزانه', ov.dailyVolume ? `حجم واردشده: <b>${num(ov.dailyVolume)}</b> خودرو در روز` : `${num(cls.laneDaily)} خودرو برای هر خط «${cls.short}» در روز${CITY.volF && CITY.volF !== 1 ? ` × ضریب ${CITY.fa} (${CITY.volF})` : ''}${state.dayType !== 'weekday' ? ` × ضریب ${dayLabelFa()}` : ''} = <b>${num(demand)}</b>`],
-    ['پخش در ساعت‌ها', `سهم هر ساعت از الگوی ترافیک ${site.live?.traffic ? 'نشانِ همین نقطه' : 'تهران'}؛ ظرفیت <b>${num(cap)}</b> خودرو در ساعت. وقتی سرعت زیر نصف سرعت آزاد است، ظرفیت عبور کم می‌شود و بقیه به ساعت بعد می‌رود. شلوغ‌ترین ساعت ${hourLabel(peakH)} با ${num(peakVeh)} خودرو.`],
-    ['تردد نهایی', `<b>${num(d.vehicles)}</b> خودرو × ${num1(state.settings.occupancy || 1.5)} سرنشین = <b>${num(d.ots)}</b> نفر در معرض دید`],
-    ['زمان مواجهه', `پنجره دید ${num(est.geo[0]?.window || 0)} متر ÷ سرعت هر ساعت = میانگین <b>${num1(d.avgExposure)}</b> ثانیه`],
-    ['احتمال دیدن', `توجه به این نوع تابلو ${Math.round(est.notice * 100)}٪ × منحنی زمان (هرچه مواجهه طولانی‌تر، بیشتر) = به طور متوسط <b>${Math.round(att * 100)}٪</b> از افراد`],
-    ['ایمپرشن', `<b>${num(d.impressions)}</b> در روز؛ ${compact(sum.monthly)} در ماه (با الگوی هفته: پنجشنبه 86٪، جمعه 62٪)`],
+    ['کدام خطوط تابلو را می‌بینند', `${esc(r.name || cls.fa)} · ${esc(cls.fa)}${r.oneway ? ' · یک‌طرفه' : ''}<br>` + per((x, g) => `<b>${x.lanes}</b> خط (${LS[x.laneSource] || ''})، عرض سواره‌رو حدود ${num1(g.roadW || 0)} متر`)],
+    ['چند خودرو از جلوی تابلو رد می‌شود', per(x => ov.dailyVolume
+      ? `حجم واردشده: ${num(x.demand / dayF)} خودرو${dayF !== 1 ? ` × ${dayF} (${dayLabelFa()})` : ''} = <b>${num(x.dailyVehicles)}</b> خودرو در روز`
+      : `${x.lanes} خط × ${num(cls.laneDaily)} خودرو در روز برای هر خط «${cls.short}»${CITY.volF && CITY.volF !== 1 ? ` × ${CITY.volF} (ضریب ${CITY.fa})` : ''}${dayF !== 1 ? ` × ${dayF} (${dayLabelFa()})` : ''} = تقاضای ${num(x.demand)}؛ سقف عبور ${num(x.capacityHour)} خودرو در ساعت → <b>${num(x.dailyVehicles)}</b> خودرو در روز${x.unserved > 1 ? ` (${num(x.unserved)} خودرو به خاطر قفل ترافیک در همان روز به تابلو نمی‌رسند)` : ''}`)
+      + `${many ? `<br>جمع: <b>${num(d.vehicles)}</b> خودرو در روز` : ''}<br>شلوغ‌ترین ساعت ${hourLabel(peakH)} با ${num(peakVeh)} خودرو؛ پخش ساعتی از الگوی ترافیک ${site.live?.traffic ? 'نشانِ همین نقطه' : IS_TEHRAN ? 'تهران' : `تهران (برای ${CITY.fa} هنوز الگوی جدا نداریم)`}. وقتی سرعت زیر نصف سرعت آزاد می‌آید، جاده خودروی کمتری عبور می‌دهد (منحنی سرعت–جریان) و بقیه به ساعت‌های بعد می‌روند.`],
+    ['چند نفر', `<b>${num(d.vehicles)}</b> خودرو × ${num1(occ)} سرنشین = <b>${num(d.ots)}</b> نفر در معرض دید در روز`],
+    ['از کجا تا کجا تابلو دیده می‌شود (پنجره دید)', per((x, g) => `تابلو ${fmtFace(g)} → خوانا از ${num(g.legible)} متر${g.limitedBy === 'sight' ? `، ولی پیچ جاده دید را به ${num(g.sight)} متر محدود می‌کند` : ''}؛ ${g.mount === 'overhead' ? 'زیر پل، وقتی زاویه نگاه به بالا از 25 درجه بیشتر شود، دید تمام می‌شود' : `نزدیک تابلو، وقتی زاویه آن از ${VIS.coneDeg} درجه کنار مسیر بیشتر شود، از دید راحت خارج می‌شود`} → پنجره دید <b>${num(g.window)}</b> متر${g.lanes?.length > 1 && Math.round(g.lanes[0].window) !== Math.round(g.lanes[g.lanes.length - 1].window) ? ` (خط نزدیک ${num(g.lanes[0].window)}، خط دور ${num(g.lanes[g.lanes.length - 1].window)} متر)` : ''}`)],
+    ['هر عبور چند ثانیه (زمان مواجهه)', `پنجره دید ÷ سرعت همان ساعت. ${per((x, g) => `${num(g.window)} متر با سرعت آزاد <bdi dir="ltr">${Math.round(vMax)} km/h</bdi> = ${num1(Math.min(60, g.window / (vMax / 3.6)))} ثانیه؛ در شلوغی <bdi dir="ltr">${Math.round(vMin)} km/h</bdi> = ${num1(Math.min(60, g.window / (vMin / 3.6)))} ثانیه؛ میانگین وزنی با تردد هر ساعت = <b>${num1(x.avgExposure)}</b> ثانیه`)}${many ? `<br>میانگین کل: <b>${num1(d.avgExposure)}</b> ثانیه` : ''}<br><small>هر عبور حداکثر 60 ثانیه حساب می‌شود.</small>`],
+    ['عمق مواجهه', `جمع «نفر × ثانیه» در همه ساعت‌ها = <b>${num(d.viewSec / 3600)}</b> نفر-ساعت در روز (هر نفر به‌طور میانگین ${num1(perPerson)} ثانیه)؛ <b>${num(sum.monthlyViewHours)}</b> نفر-ساعت در ماه. از این، ${num(sum.monthlySeenHours)} نفر-ساعت مربوط به کسانی است که تابلو را واقعاً می‌بینند.`],
+    ['چند درصد واقعاً می‌بینند', `احتمال توجه این نوع سازه ${Math.round(est.notice * 100)}٪${site.clutter ? ` (با کسر شلوغی ${site.clutter} تابلوی نزدیک)` : ''} × ضریب زمان <bdi dir="ltr">1 − e<sup>−t/6</sup></bdi> (مثلاً 5 ثانیه = 57٪، 10 ثانیه = 81٪)${est.loopShare < 1 ? ` × سهم نمایش در چرخه دیجیتال ${Math.round(est.loopShare * 100)}٪` : ''} = به‌طور متوسط <b>${Math.round(att * 100)}٪</b> از افراد`],
+    ['ایمپرشن', `${num(d.ots)} نفر × ${Math.round(att * 100)}٪ = <b>${num(d.impressions)}</b> در روز؛ <b>${compact(sum.monthly)}</b> در ماه (پنجشنبه 86٪ و جمعه 62٪ روز کاری)<br>بازه محتمل با داده‌های فعلی: ${compact(lo(sum.monthly))} تا ${compact(hi(sum.monthly))} در ماه (±${Math.round(sum.spread * 100)}٪؛ ${CONFIDENCE_FA[sum.confidence]})`],
   ];
-  return `<details class="p-sec how"><summary class="sec-title"><span>${icon('info')} این عددها چطور حساب شد</span></summary>
+  return `<details class="p-sec how" open><summary class="sec-title"><span>${icon('info')} این عددها چطور حساب شد</span><span class="chip">${dayLabelFa()}</span></summary>
     <ol class="how-steps">${steps.map(([t, v]) => `<li><b>${t}</b><span>${v}</span></li>`).join('')}</ol>
-    <div class="note">همه عددها تخمین مدل است، نه شمارش. حجم واقعی را اگر دارید، در «سازه و هزینه» وارد کنید؛ جایگزین تخمین می‌شود.</div></details>`;
+    <div class="note">همه عددها تخمین مدل است، نه شمارش. مبنا: ${esc(sum.sources.join(' + '))}. تعداد خط یا حجم تردد واقعی (از شرکت کنترل ترافیک یا مالک سازه) را اگر دارید، در «سازه و هزینه» وارد کنید؛ جایگزین تخمین می‌شود و بازه خطا کم می‌شود.</div></details>`;
 }
 
 function scheduleTab(site, sum, est) {
@@ -722,6 +737,7 @@ function setupTab(site, sum, est) {
       <div class="kpi"><div class="kpi-l">ایمپرشن کل کمپین</div><div class="kpi-v">${compact(sum.campaign.impressions)}</div></div>
       <div class="kpi"><div class="kpi-l">هزینه کمپین</div><div class="kpi-v" style="font-size:17px">${sum.campaign.cost ? toman(sum.campaign.cost) : '—'}</div></div>
       <div class="kpi"><div class="kpi-l">CPM</div><div class="kpi-v" style="font-size:17px">${sum.cpm ? toman(sum.cpm) : '—'}</div></div>
+      <div class="kpi"><div class="kpi-l">هزینه هر ایمپرشن</div><div class="kpi-v" style="font-size:17px">${sum.cpm ? `${perImp(sum.cpm / 1000)} تومان` : '—'}</div></div>
     </div>
   </div>
   <div class="p-sec">
@@ -1019,11 +1035,14 @@ function renderCompare() {
     ['افراد در معرض دید/روز', r => pick(r).daily.ots, num, 1],
     ['ایمپرشن روزانه', r => pick(r).daily.impressions, num, 1],
     ['ایمپرشن ماهانه', r => r.sum.monthly, num, 1],
-    ['میانگین زمان مواجهه', r => pick(r).daily.avgExposure, v => `${num1(v)} ثانیه`, 1],
+    ['میانگین زمان مواجهه هر عبور', r => pick(r).daily.avgExposure, v => `${num1(v)} ثانیه`, 1],
+    ['عمق مواجهه ماهانه (نفر-ساعت)', r => r.sum.monthlyViewHours, num, 1],
+    ['زمان دیده‌شدن ماهانه (نفر-ساعت)', r => r.sum.monthlySeenHours, num, 1],
     ['میانگین سرعت', r => pick(r).daily.avgSpeed, v => `<bdi dir="ltr">${Math.round(v)} km/h</bdi>`, 0],
     ['ساعات طلایی', r => hourRange(pick(r).daily.peak), v => v, 0],
     ['اجاره ماهانه', r => r.s.price, v => v ? toman(v) : '—', 0],
     ['CPM (تومان)', r => r.sum.cpm, v => v ? num(v) : '—', -1],
+    ['هزینه هر ایمپرشن (تومان)', r => r.sum.cpm ? r.sum.cpm / 1000 : null, v => v ? perImp(v) : '—', -1],
     [`ایمپرشن کمپین ${state.settings.campaignWeeks} هفته‌ای`, r => r.sum.campaign.impressions, num, 1],
     ['سطح اطمینان داده', r => CONFIDENCE_FA[r.sum.confidence], v => v, 0],
   ];
@@ -1130,6 +1149,7 @@ function budgetHTML() {
       <div class="kpi"><div class="kpi-l">ایمپرشن ماهانه</div><div class="kpi-v">${compact(r.imp)}</div></div>
       <div class="kpi"><div class="kpi-l">هزینه</div><div class="kpi-v" style="font-size:16px">${toman(r.cost)}</div><div class="kpi-s">باقیمانده ${toman(left)}</div></div>
       <div class="kpi"><div class="kpi-l">CPM ترکیبی</div><div class="kpi-v" style="font-size:16px">${num(r.cost / (r.imp / 1000))}</div></div>
+      <div class="kpi"><div class="kpi-l">هزینه هر ایمپرشن</div><div class="kpi-v" style="font-size:16px">${perImp(cpi(r.cost, r.imp))} <small>تومان</small></div></div>
     </div>
     <button class="btn btn-ghost btn-block" data-act="apply-budget" data-ids="${r.set.map(it => it.s.id).join(',')}" style="margin-top:10px">فقط همین‌ها را مقایسه کن</button>`
     : '<p class="s-desc">با این بودجه هیچ نقطه‌ای قابل خرید نیست.</p>'}`;
@@ -1163,14 +1183,14 @@ function onSheetChange(e) {
 function tableRows() {
   const head = ['#', 'نام', 'عرض جغرافیایی', 'طول جغرافیایی', 'نوع معبر', 'نوع سازه', 'جهت دید', 'خط', 'امتیاز',
     'تردد روزانه (روز کاری)', 'افراد در معرض دید/روز', 'ایمپرشن روزانه', 'ایمپرشن هفتگی', 'ایمپرشن ماهانه',
-    'زمان مواجهه (ثانیه)', 'سرعت میانگین', 'ساعات طلایی', 'اجاره ماهانه (تومان)', 'CPM (تومان)', 'سطح اطمینان'];
+    'زمان مواجهه (ثانیه)', 'سرعت میانگین', 'ساعات طلایی', 'اجاره ماهانه (تومان)', 'CPM (تومان)', 'هزینه هر ایمپرشن (تومان)', 'سطح اطمینان'];
   const rows = state.sites.filter(isReady).map((s, i) => {
     const sum = summarize(s, state.settings); const d = sum.wk.daily;
     const dirs = directionsFor(s).facing;
     return [i + 1, s.name, s.lat.toFixed(6), s.lng.toFixed(6), ROAD_CLASSES[s.road.cls]?.fa, FORMATS[s.format]?.fa,
       s.facing === 'both' ? 'هر دو جهت' : dirs[0]?.label, dirs.map(x => x.lanes).join('+'), sum.score,
       Math.round(d.vehicles), Math.round(d.ots), Math.round(d.impressions), Math.round(sum.weekly), Math.round(sum.monthly),
-      d.avgExposure.toFixed(1), Math.round(d.avgSpeed), hourRange(d.peak), s.price || '', sum.cpm ? Math.round(sum.cpm) : '', CONFIDENCE_FA[sum.confidence]];
+      d.avgExposure.toFixed(1), Math.round(d.avgSpeed), hourRange(d.peak), s.price || '', sum.cpm ? Math.round(sum.cpm) : '', sum.cpm ? +(sum.cpm / 1000).toFixed(1) : '', CONFIDENCE_FA[sum.confidence]];
   });
   return [head, ...rows];
 }
@@ -1353,6 +1373,8 @@ async function loadRoadsFor(bounds, classes = ['motorway', 'trunk', 'primary', '
 const SCOPE_SORT = {
   score: ['امتیاز', e => e.score],
   imp: ['ایمپرشن', e => e.ev.dailyImp],
+  veh: ['تردد', e => e.ev.dailyVeh ?? 0],
+  depth: ['عمق مواجهه', e => e.ev.monthlyViewH ?? 0],
   value: ['ارزش خرید', e => e.valueIdx ?? -1],
   cpm: ['CPM ارزان', e => -(e.cpm ?? Infinity)],
 };
@@ -1376,7 +1398,7 @@ async function rankView() {
       try { await loadOsmStructures(b); await loadRoadsFor(b.pad(0.1)); } catch { /* keep market list */ }
       const osm = [...structCache.items.values()].filter(x => b.contains([x.lat, x.lng]));
       extra = rankStructures(osm, [...roadCache.ways.values()], state.settings).filter(r => r.ranked)
-        .map(r => ({ ...r, src: 'osm', ev: { dailyImp: r.imp, exp: r.exp, weeklyImp: r.imp * 7 }, monthly: null, cpm: null, valueIdx: null }));
+        .map(r => ({ ...r, src: 'osm', ev: { dailyImp: r.imp, exp: r.exp, weeklyImp: r.imp * 7, dailyVeh: r.veh, weeklyExpSec: (r.seen || 0) * 7, weeklyViewSec: (r.view || 0) * 7, monthlyViewH: (r.view || 0) * 30 / 3600 }, monthly: null, cpm: null, valueIdx: null }));
     }
   }
   const f = state.invFilter || 'all';
@@ -1384,7 +1406,7 @@ async function rankView() {
   const get = SCOPE_SORT[S.sort]?.[1] || SCOPE_SORT.score[1];
   list.sort((a, b) => get(b) - get(a));
   rankById.clear();
-  list.forEach((x, i) => rankById.set(x.id, { rank: i + 1, score: x.score, imp: x.ev.dailyImp, exp: x.ev.exp, road: x.road, ranked: true }));
+  list.forEach((x, i) => rankById.set(x.id, { rank: i + 1, score: x.score, imp: x.ev.dailyImp, exp: x.ev.exp, veh: x.ev.dailyVeh, road: x.road, ranked: true }));
   state.ranking = { status: 'ready', list };
   highlightDistricts();
 }
@@ -1477,10 +1499,18 @@ function focusStructure(id) {
   setTimeout(() => invLayer?.eachLayer(l => { const ll = l.getLatLng?.(); if (ll && Math.abs(ll.lat - st.lat) < 1e-7 && Math.abs(ll.lng - st.lng) < 1e-7) l.openPopup(); }), 900);
 }
 
+// cost per impression for a structure popup: the evaluated monthly impressions when known, else the day × the week
+function popCpi(st, r) {
+  const pe = state.plan.entries?.find(x => x.id === st.id);
+  const mp = pe ? monthlyPrice(pe, state.pricing) : st.price;
+  const mi = pe?.ev?.weeklyImp ? pe.ev.weeklyImp * 30 / 7 : r?.imp ? r.imp * WEEK.reduce((a, d) => a + d.f, 0) * 30 / 7 : null;
+  const v = cpi(mp, mi);
+  return v ? `<span>هر ایمپرشن <b>${perImp(v)}</b> ت</span>` : '';
+}
 function structPopup(st, r) {
   const pe = state.plan.entries?.find(x => x.id === st.id);
-  if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, imp: pe.ev.dailyImp, exp: pe.ev.exp };
-  const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span>امتیاز <b>${r.score}</b></span><span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه</span></div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
+  if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, imp: pe.ev.dailyImp, exp: pe.ev.exp, veh: pe.ev.dailyVeh };
+  const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span>امتیاز <b>${r.score}</b></span>${r.veh ? `<span><b>${compact(r.veh)}</b> خودرو/روز</span>` : ''}<span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه مواجهه</span>${popCpi(st, r)}</div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
   const e = state.plan.entries?.find(x => x.id === st.id);
   const priceNote = st.priceSource === 'manual' ? '' : st.agency ? ` · ${esc(st.site || 'نرخ‌نامه آژانس')}` : st.priceEstimated ? ` · <span title="${esc(st.priceBasis || '')}${st.sourcePrice ? ` — قیمت منبع: ${toman(st.sourcePrice)}` : ''}">برآورد</span>` : '';
   const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${priceNote}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
@@ -1597,7 +1627,7 @@ function inventoryHTML() {
       <span class="inv-rank">${i + 1}</span>
       <div class="inv-main"><div class="card-name">${esc(x.name)}</div>
         <div class="card-meta">${TYPE_FA[x.type] || 'سازه'} · ${esc(x.road || '')}${x.district ? ` · منطقه ${x.district}` : ''}${x.owner ? ' · ' + esc(x.owner) : x.src === 'osm' ? ' · OSM' : ''}${x.approx ? ' · <span style="color:var(--warn)">مکان تقریبی</span>' : ''}</div>
-        <div class="card-stats"><span>${icon('eye')} <b>${compact(x.ev.dailyImp)}</b>/روز</span><span><b>${num1(x.ev.exp)}</b> ثانیه</span>${x.monthly ? `<span><b>${compact(x.monthly)}</b> ماهانه</span>` : ''}${x.valueIdx != null ? valueChip(x.valueIdx, x.approx) : ''}</div>
+        <div class="card-stats">${x.ev.dailyVeh ? `<span>${icon('car')} <b>${compact(x.ev.dailyVeh)}</b> خودرو</span>` : ''}<span>${icon('eye')} <b>${compact(x.ev.dailyImp)}</b>/روز</span><span><b>${num1(x.ev.exp)}</b> ثانیه</span>${x.monthly ? `<span><b>${compact(x.monthly)}</b> ماهانه</span>` : ''}${x.cpm ? `<span>هر ایمپرشن <b>${perImp(x.cpm / 1000)}</b> ت</span>` : ''}${x.valueIdx != null ? valueChip(x.valueIdx, x.approx) : ''}</div>
       </div>
       <div class="card-side"><span class="mini-score" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${x.score}</span>
         <button class="icon-btn" data-act="inv-analyze" data-id="${x.id}" aria-label="تحلیل کامل" title="تحلیل کامل">${icon('target')}</button></div>
@@ -1968,9 +1998,9 @@ function planHTML() {
     <div class="kpi hl"><div class="kpi-l">بودجه مصرف‌شده</div><div class="kpi-v">${toman(T.cost).replace(' تومان', '')}<small>تومان</small></div><div class="usage-bar"><i style="width:${(used * 100).toFixed(1)}%"></i></div><div class="kpi-s">${Math.round(used * 100)}٪ از ${toman(P.budget)}</div></div>
     <div class="kpi"><div class="kpi-l">${icon('eye')} ایمپرشن کل</div><div class="kpi-v">${compactParts(T.imp)[0]}<small>${compactParts(T.imp)[1]}</small></div><div class="kpi-s">${compact(T.ots)} نفر در معرض دید</div></div>
     <div class="kpi"><div class="kpi-l">${icon('clock')} زمان مواجهه کل</div><div class="kpi-v">${compactParts(T.expH)[0]}<small>${compactParts(T.expH)[1]} نفر-ساعت</small></div><div class="kpi-s">${num1(T.imp ? T.expH * 3600 / T.imp : 0)} ثانیه به ازای هر ایمپرشن</div></div>
-    <div class="kpi"><div class="kpi-l">${icon('money')} CPM ترکیبی</div><div class="kpi-v">${T.cpm ? compact(T.cpm) : '—'}<small>${T.cpm ? 'تومان' : ''}</small></div><div class="kpi-s">${T.count} سازه روی ${T.roads} مسیر</div></div>
+    <div class="kpi"><div class="kpi-l">${icon('money')} CPM ترکیبی</div><div class="kpi-v">${T.cpm ? compact(T.cpm) : '—'}<small>${T.cpm ? 'تومان' : ''}</small></div><div class="kpi-s">هر ایمپرشن <b>${perImp(cpi(T.cost, T.imp))}</b> تومان · ${T.count} سازه روی ${T.roads} مسیر</div></div>
   </div>`;
-  const altRows = R.alt.map(({ k, r }) => `<tr class="${k === P.objective ? 'cur' : ''}"><th>${OBJECTIVES[k].fa}</th><td>${compact(r.total.imp)}</td><td>${compact(r.total.expH)}</td><td>${toman(r.total.cost)}</td><td>${r.total.count}</td><td>${r.total.cpm ? compact(r.total.cpm) : '—'}</td><td>${k === P.objective ? '<span class="pill ok">انتخاب فعلی</span>' : `<button class="btn btn-ghost btn-sm" data-act="pl-obj" data-v="${k}">انتخاب</button>`}</td></tr>`).join('');
+  const altRows = R.alt.map(({ k, r }) => `<tr class="${k === P.objective ? 'cur' : ''}"><th>${OBJECTIVES[k].fa}</th><td>${compact(r.total.imp)}</td><td>${compact(r.total.expH)}</td><td>${toman(r.total.cost)}</td><td>${r.total.count}</td><td>${r.total.cpm ? compact(r.total.cpm) : '—'}</td><td>${perImp(cpi(r.total.cost, r.total.imp))}</td><td>${k === P.objective ? '<span class="pill ok">انتخاب فعلی</span>' : `<button class="btn btn-ghost btn-sm" data-act="pl-obj" data-v="${k}">انتخاب</button>`}</td></tr>`).join('');
   const rows = res.selected.slice().sort((a, b) => b.imp - a.imp).map(o => {
     const lock = !!P.locks[o.id];
     const fair = o.members.reduce((a, m) => a + (m.fair || 0), 0), mp = o.members.reduce((a, m) => a + (monthlyPrice(m, pr) || 0), 0);
@@ -1981,7 +2011,7 @@ function planHTML() {
       <td class="nm"><b>${esc(o.name)}</b>${o.kind === 'bundle' ? ' <span class="chip acc">باندل</span>' : ''}${members}</td>
       <td>${esc(o.owner || (o.members[0]?.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
       <td>${o.weeks} هفته${o.weeks > P.weeks ? ' <span class="chip warn">حداقل مجری</span>' : ''}</td>
-      <td>${toman(o.cost)}</td><td>${compact(o.imp)}</td><td>${num1(o.imp ? o.expH * 3600 / o.imp : 0)} ث</td><td>${compact(o.cost / (o.imp / 1000))}</td>
+      <td>${toman(o.cost)}</td><td>${compact(o.imp)}</td><td>${num1(o.imp ? o.expH * 3600 / o.imp : 0)} ث</td><td>${compact(o.cost / (o.imp / 1000))}</td><td>${perImp(cpi(o.cost, o.imp))}</td>
       <td>${valueChip(fair && mp ? fair / mp : null)}${coefd ? ` <span class="chip acc" title="ضریب ارزشمندی دستی">×${num1(o.members[0].coef || 1)}</span>` : ''}</td>
       <td><button class="tg" data-act="pl-excl" data-id="${o.id}" title="حذف از پیشنهاد" aria-label="حذف">${icon('close')}</button></td></tr>`;
   }).join('');
@@ -1996,12 +2026,12 @@ function planHTML() {
   return `${guideHTML('plan')}<div class="plan-grid">${cfg}<main class="plan-main">
     ${kpis}${P.cal ? seasonHTML(P.cal) : ''}${warn}
     <div class="s-card"><h3>سازه‌های پیشنهادی</h3><p class="s-desc">هدف «${OBJECTIVES[P.objective].fa}» · ${P.weeks} هفته · از بین ${R.nOptions} گزینه خرید (${R.nEntries} سازه). قفل = حتماً در کمپین؛ ✕ = کنار بگذار و دوباره بچین. ضریب ارزشمندی هر سازه (لیدربورد یا تب قیمت‌ها) در هدف بهینه‌سازی ضرب می‌شود.</p>
-      ${rows ? `<div class="tbl-wrap"><table class="cmp plan-tbl"><thead><tr><th></th><th>سازه</th><th>مجری</th><th>مدت قابل پرداخت</th><th>هزینه</th><th>ایمپرشن</th><th>مواجهه</th><th>CPM</th><th>ارزش خرید</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="s-desc">با این بودجه هیچ سازه‌ای قابل خرید نیست.</p>'}
+      ${rows ? `<div class="tbl-wrap"><table class="cmp plan-tbl"><thead><tr><th></th><th>سازه</th><th>مجری</th><th>مدت قابل پرداخت</th><th>هزینه</th><th>ایمپرشن</th><th>مواجهه</th><th>CPM</th><th>هر ایمپرشن (تومان)</th><th>ارزش خرید</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="s-desc">با این بودجه هیچ سازه‌ای قابل خرید نیست.</p>'}
       ${next ? `<h3 style="margin-top:16px">گزینه‌های بعدی (اگر بودجه بیشتر شود)</h3><ul class="next-list">${next}</ul>` : ''}
     </div>
     <div class="s-grid">
       <div class="s-card"><h3>اگر هدف را عوض کنید</h3><p class="s-desc">همین بودجه و محدودیت‌ها، با هر هدف</p>
-        <div class="tbl-wrap"><table class="cmp"><thead><tr><th>هدف</th><th>ایمپرشن</th><th>نفر-ساعت</th><th>هزینه</th><th>سازه</th><th>CPM</th><th></th></tr></thead><tbody>${altRows}</tbody></table></div></div>
+        <div class="tbl-wrap"><table class="cmp"><thead><tr><th>هدف</th><th>ایمپرشن</th><th>نفر-ساعت</th><th>هزینه</th><th>سازه</th><th>CPM</th><th>هر ایمپرشن</th><th></th></tr></thead><tbody>${altRows}</tbody></table></div></div>
       <div class="s-card"><h3>منحنی بودجه</h3><p class="s-desc">ایمپرشن قابل خرید در بودجه‌های مختلف؛ جایی که منحنی صاف می‌شود، افزایش بودجه بازده کمتری دارد.</p><div class="chart-box" id="planCurve"></div></div>
     </div>
     <p class="disclaimer">ایمپرشن و زمان مواجهه با مدل ترافیک برآورد شده‌اند. پیشنهاد با روش حریصانه و بهبود جابه‌جایی ساخته می‌شود و ممکن است با بهینه مطلق کمی فاصله داشته باشد. قیمت‌ها قیمت اعلام‌شده بازارند و قبل از قرارداد باید استعلام شوند. ${DEMO ? 'باندل نمونه و قوانین مجری‌ها در این دمو فرضی‌اند.' : ''}</p>
@@ -2126,8 +2156,9 @@ async function onPlannerClick(t, e) {
   if (a === 'pl-reset-ex') { e.preventDefault(); P.excludes = {}; replan(); return true; }
   if (a === 'pl-copy') {
     const R = P.result?.res; if (!R) return true;
-    const rows = [['سازه', 'مجری', 'نوع خرید', 'هفته', 'هزینه (تومان)', 'ایمپرشن', 'نفر-ساعت', 'CPM'],
-      ...R.selected.map(o => [o.name, o.owner || '', o.kind === 'bundle' ? 'باندل' : 'تکی', o.weeks, Math.round(o.cost), Math.round(o.imp), Math.round(o.expH), Math.round(o.cost / (o.imp / 1000))])];
+    const rows = [['سازه', 'مجری', 'نوع خرید', 'هفته', 'هزینه (تومان)', 'ایمپرشن', 'نفر-ساعت', 'CPM', 'هزینه هر ایمپرشن (تومان)'],
+      ...R.selected.map(o => [o.name, o.owner || '', o.kind === 'bundle' ? 'باندل' : 'تکی', o.weeks, Math.round(o.cost), Math.round(o.imp), Math.round(o.expH), Math.round(o.cost / (o.imp / 1000)), +(o.cost / o.imp).toFixed(1)]),
+      ['جمع کمپین', '', '', '', Math.round(R.total.cost), Math.round(R.total.imp), Math.round(R.total.expH), Math.round(R.total.cost / (R.total.imp / 1000)), +(R.total.cost / R.total.imp).toFixed(1)]];
     copyText(rows.map(r => r.join('\t')).join('\n'), 'جدول پیشنهاد کپی شد؛ در اکسل یا گوگل‌شیت Paste کنید');
     return true;
   }
@@ -2278,11 +2309,14 @@ const BOARD_COLS = [
   ['type', 'نوع', x => x.type],
   ['owner', 'مجری', x => x.owner || ''],
   ['score', 'امتیاز', x => x.score],
+  ['veh', 'خودرو/روز', x => x.ev.dailyVeh ?? 0],
   ['imp', 'ایمپرشن روزانه', x => x.ev.dailyImp],
   ['exp', 'مواجهه (ث)', x => x.ev.exp],
+  ['depth', 'عمق مواجهه (نفر-ساعت/ماه)', x => x.ev.monthlyViewH ?? 0],
   ['sight', 'دید مستقیم', x => x.sight ?? 0],
   ['price', 'اجاره ماهانه', x => x.monthly ?? -1],
   ['cpm', 'CPM', x => x.cpm ?? Infinity],
+  ['cpi', 'هر ایمپرشن', x => x.cpm ?? Infinity],
   ['value', 'ارزش خرید', x => x.valueIdx ?? -1],
   ['fair', 'قیمت منصفانه', x => x.fair ?? -1],
   ['coef', 'ضریب', x => x.coef || 1],
@@ -2339,8 +2373,8 @@ function boardHTML() {
       <td class="nm"><b>${esc(r.name)}</b>${r.approx ? ` <span class="chip warn" title="${esc(LOC_FA[r.loc] || '')}${r.locNote ? ' — ' + esc(r.locNote) : ''}">مکان تقریبی</span>` : ''}${inPlan ? ' <span class="chip good">در کمپین</span>' : ''}${P.locks[r.id] ? ` <span class="chip warn">${icon('lock')}</span>` : ''}</td>
       <td>${r.district ?? '—'}</td><td class="rd" title="${esc(r.road || '')}">${esc(r.road || '—')}</td><td>${TYPE_FA[r.type] || '—'}</td><td>${esc(r.owner || (r.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
       <td><span class="mini-score" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${r.score}</span></td>
-      <td>${num(r.ev.dailyImp)}</td><td>${num1(r.ev.exp)}</td><td>${r.sight ? num(r.sight) + ' م' : '—'}</td>
-      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td>
+      <td>${r.ev.dailyVeh ? num(r.ev.dailyVeh) : '—'}</td><td>${num(r.ev.dailyImp)}</td><td>${num1(r.ev.exp)}</td><td>${r.ev.monthlyViewH ? num(r.ev.monthlyViewH) : '—'}</td><td>${r.sight ? num(r.sight) + ' م' : '—'}</td>
+      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td><td>${r.cpm ? perImp(r.cpm / 1000) : '—'}</td>
       <td>${valueChip(r.valueIdx, r.approx)}</td><td>${r.fair ? toman(r.fair) : '—'}</td><td>${r.src === 'inv' ? coefSelect(r.id, r.coef || 1) : '—'}</td><td>${priceAge(r.priceUpdated)}</td>
       <td>${r.clutter || 0}</td></tr>`;
   }).join('');
@@ -2377,7 +2411,7 @@ function boardHTML() {
 async function onBoardClick(t, e) {
   const B = state.board, P = state.plan, a = t.dataset.act;
   const visible = () => boardRows().map(r => r.id);
-  if (a === 'bd-sort') { const k = t.dataset.v; if (B.sort === k) B.dir *= -1; else { B.sort = k; B.dir = ['name', 'road', 'owner', 'type', 'district', 'cpm', 'clutter', 'age'].includes(k) ? 1 : -1; } renderPlanner(); return true; }
+  if (a === 'bd-sort') { const k = t.dataset.v; if (B.sort === k) B.dir *= -1; else { B.sort = k; B.dir = ['name', 'road', 'owner', 'type', 'district', 'cpm', 'cpi', 'clutter', 'age'].includes(k) ? 1 : -1; } renderPlanner(); return true; }
   if (a === 'bd-dist') { const n = +t.dataset.v; B.districts = B.districts.includes(n) ? B.districts.filter(x => x !== n) : [...B.districts, n]; renderPlanner(); return true; }
   if (a === 'bd-dclear') { B.districts = []; renderPlanner(); return true; }
   if (a === 'bd-type') { const v = t.dataset.v; B.types = B.types.includes(v) ? B.types.filter(x => x !== v) : [...B.types, v]; renderPlanner(); return true; }
@@ -2664,7 +2698,7 @@ function openHelp() {
     <table class="mini"><tr><th>نوع معبر</th><th>خودرو/خط/روز</th><th>خط پیش‌فرض در هر جهت</th><th>سرعت آزاد</th></tr>
       ${Object.values(ROAD_CLASSES).slice(0, 5).map(c => `<tr><td>${c.fa}</td><td class="ltr">${num(c.laneDaily)}</td><td>${c.lanes}</td><td><bdi dir="ltr">${c.freeFlow} km/h</bdi></td></tr>`).join('')}</table>
     <ul>
-      <li><b>تعداد خط</b>: اول تگ lanes در OpenStreetMap؛ اگر نبود، از عرض ثبت‌شده معبر (هر 3.4 متر یک خط)؛ اگر آن هم نبود، پیش‌فرض نوع معبر (جدول بالا). برای بزرگراه‌های دوطرفه هر جهت جدا حساب می‌شود و فقط جهتی که تابلو را می‌بیند در ایمپرشن می‌آید (در نرخ‌نامه‌ها از روی «غرب به شرق» و مانند آن).</li>
+      <li><b>تعداد خط</b>: اول تگ lanes در OpenStreetMap؛ اگر نبود، از عرض ثبت‌شده معبر (هر 3.4 متر یک خط، ولی نه بیشتر از سقف نوع معبر در هر جهت: بزرگراه 6، بزرگراه شهری 5، شریانی اصلی 4، فرعی 3، محلی 2؛ چون عرض ثبت‌شده گاهی پارک حاشیه و پیاده‌رو را هم دارد)؛ اگر آن هم نبود، پیش‌فرض نوع معبر (جدول بالا). برای بزرگراه‌های دوطرفه هر جهت جدا حساب می‌شود و فقط جهتی که تابلو را می‌بیند در ایمپرشن می‌آید (در نرخ‌نامه‌ها از روی «غرب به شرق» و مانند آن).</li>
       <li><b>ساعت به ساعت</b>: تقاضای روزانه با الگوی 24 ساعته (نشان برای همان نقطه یا پروفایل تهران) بین ساعت‌ها پخش می‌شود. هر خط در ساعت حداکثر ${num(1900)} خودرو در بزرگراه و ${num(950)} در شریانی اصلی عبور می‌دهد. وقتی سرعت زیر نصف سرعت آزاد است، ظرفیت عبور طبق منحنی سرعت–جریان کم می‌شود (4×r×(1−r)) و خودروهای مانده به ساعت بعد منتقل می‌شوند. برای همین ساعت‌های قفل ترافیک تردد کمتر ولی زمان مواجهه بیشتری دارند.</li>
     </ul>
     <h3>2. سرعت و زمان مواجهه</h3>
@@ -2681,6 +2715,16 @@ function openHelp() {
     <p>«احتمال توجه» به نوع و زاویه سازه بستگی دارد (عرشه پل روبه‌رو بالاترین) و «ضریب زمان مواجهه» نشان می‌دهد مواجهه کوتاه‌تر احتمال دیده شدن را کم می‌کند. این همان منطق Visibility-Adjusted Contact در استانداردهای اندازه‌گیری تبلیغات محیطی است.</p>
     <table class="mini"><tr><th>نوع سازه</th><th>ابعاد پیش‌فرض (متر)</th><th>فاصله خوانایی</th><th>محل نصب</th><th>احتمال توجه</th></tr>
       ${Object.values(FORMATS).map(f => `<tr><td>${f.fa}</td><td class="ltr">${f.w}×${f.h}</td><td>${legibleFor(f)} متر</td><td>${f.mount === 'overhead' ? 'بالای سواره‌رو' : `کنار جاده، ${f.setback} متر از لبه`}</td><td>${Math.round(f.notice * 100)}٪</td></tr>`).join('')}</table>
+    <h3>عمق مواجهه</h3>
+    <div class="formula">عمق مواجهه (نفر-ساعت) = جمعِ «افراد در معرض دید × ثانیه مواجهه» در هر 24 ساعت ÷ 3600<br>زمان دیده‌شدن (نفر-ساعت) = همان، فقط برای کسانی که تابلو را می‌بینند (ایمپرشن × ثانیه مواجهه)</div>
+    <p>ایمپرشن می‌گوید چند نفر تابلو را دیده‌اند؛ عمق مواجهه می‌گوید روی هم چقدر زمان جلوی آن بوده‌اند. دو تابلو با ایمپرشن برابر، اگر یکی در ترافیک کند باشد، عمق مواجهه بسیار بیشتری دارد و برای پیام طولانی‌تر یا برندینگ بهتر است. هدف «بیشترین زمان مواجهه» در کمپین با بودجه همین «زمان دیده‌شدن» را بیشینه می‌کند. حساب ساعت‌به‌ساعت است، نه میانگین روز × تردد روز، تا ساعت‌های شلوغ و خلوت درست وزن بگیرند.</p>
+    <h3>دقت و بازه خطا</h3>
+    <ul>
+      <li>کنار ایمپرشن یک بازه آمده که به مبنای داده بستگی دارد: فقط نوع معبر ±45٪، با تعداد خط OSM ±35٪، به‌علاوه الگوی ترافیک نشان ±25٪، به‌علاوه سرعت معمول نشان یا حجم تردد واقعی ±15٪.</li>
+      <li>حجم تردد واقعی که وارد کنید، شمارش حساب می‌شود و دیگر سقف ظرفیت جاده رویش اعمال نمی‌شود.</li>
+      <li>در مدل نیست: تابلوهای بدون نور در شب (همه ساعت‌ها با فرض روشن بودن تابلو حساب می‌شود)، عابر پیاده، و مسیرهایی که از پشت یا زاویه بسته تابلو را می‌بینند. برای شهرهای غیر از تهران، تردد هر خط = تهران × ضریب برآوردی همان شهر.</li>
+      <li>برای مقایسه منصفانه بین سازه‌ها، همه با یک مدل و یک فرض سرنشین سنجیده می‌شوند؛ خطای مدل در مقایسه نسبی کمتر از عدد مطلق است.</li>
+    </ul>
     <h3>4. هفته، ماه و امتیاز</h3>
     <p>ضریب روزهای هفته: ${WEEK.map(w => `${w.fa} ${w.f}`).join('، ')}. ماهانه = هفتگی × 30/7. امتیاز 0 تا 100 = 70٪ حجم ایمپرشن روزانه (مقیاس لگاریتمی) + 30٪ زمان مواجهه.</p>
     <h3>5. رتبه‌بندی سازه‌ها و جایگاه‌یابی</h3>
@@ -2700,6 +2744,7 @@ function openHelp() {
     <ul>
       <li><b>نرخ‌نامه آژانس</b>: سازه‌های نرخ‌نامه (فعلاً رسش، 1405/08/03، 129 سازه در تهران) با قیمت 30 روزه همان نرخ‌نامه، کد، تاریخ آزاد شدن از رزرو و بازه «قابل اکران» می‌آیند. جای آن‌ها از روی نشانی (بزرگراه × تقاطع یا نشانه شهری) پیدا شده و «مکان تقریبی» دارند.</li>
       <li><b>برآورد بقیه سازه‌ها</b>: قیمت آگهی‌های باز قدیمی است (روی همان بزرگراه حدود 20 تا 40 برابر کمتر از نرخ امروز). از روی نرخ‌نامه یک مدل ساخته می‌شود: قیمت بر اساس متراژ تابلو، نوع (بیلبورد، پل عابر، پل سواره، عمودی) و بزرگراه. قیمت هر سازه دیگر = نیمی از این مدل و نیمی از قیمت قدیمی خودش به سطح امروز (میانگین هندسی). این قیمت‌ها برچسب «برآورد» دارند و با نگه داشتن ماوس روی آن، مبنا و قیمت منبع دیده می‌شود. شهرهای دیگر فعلاً با همان سطح تهران × نسبت قیمت خودشان برآورد می‌شوند.</li>
+      <li><b>هزینه هر ایمپرشن</b> = اجاره ماهانه ÷ ایمپرشن ماهانه (CPM ÷ 1000). برای کمپین = کل هزینه ÷ کل ایمپرشن همه سازه‌ها در کل مدت؛ در پنجره هر سازه، فهرست‌ها، لیدربورد، کمپین با بودجه و دستیار کمپین آمده است.</li>
       <li><b>ارزش خرید</b> = قیمت منصفانه ÷ قیمت. قیمت منصفانه از برازش قیمت‌های واقعی (نرخ‌نامه) بر ایمپرشن ماهانه به دست می‌آید؛ بالای 1 یعنی این سازه برای مخاطبی که می‌آورد ارزان‌تر از بازار است.</li>
       <li>هر نرخ‌نامه تازه‌ای که از آژانس‌ها بگیرید به همین روش اضافه می‌شود و برآوردها را دقیق‌تر می‌کند.</li>
     </ul>

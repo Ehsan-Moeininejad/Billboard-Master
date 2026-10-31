@@ -98,7 +98,9 @@ export function planCampaign(o) {
     }
     if (!fit) return;
     const info = structInfo(st);
-    boards.push({ st, fit, why, score: info.score, valueIdx: info.valueIdx, imp: info.imp, price: st.price || null });
+    // monthly impressions and cost per impression (تومان) when the structure is priced
+    const mImp = info.mImp || null, price = st.price || null;
+    boards.push({ st, fit, why, score: info.score, valueIdx: info.valueIdx, imp: info.imp, mImp, price, cpi: price && mImp ? price / mImp : null });
   });
   const maxFit = Math.max(1e-9, ...boards.map(b => b.fit));
   boards.forEach(b => {
@@ -119,7 +121,10 @@ export function planCampaign(o) {
     if (o.budget && !b.price) continue;
     plan.push(b); spent += cost;
   }
-  return { spots, boards, plan, spent, months };
+  // whole campaign: impressions over all months and what each costs on average
+  const imps = plan.reduce((a, b) => a + (b.mImp || 0) * months, 0);
+  const pricedImps = plan.filter(b => b.price && b.mImp).reduce((a, b) => a + b.mImp * months, 0);
+  return { spots, boards, plan, spent, months, imps, cpi: spent && pricedImps ? spent / pricedImps : null };
 }
 
 export const fmtToman = v => v == null ? '—' : v >= 1e9 ? `${+(v / 1e9).toFixed(2)} میلیارد` : `${Math.round(v / 1e6)} میلیون`;

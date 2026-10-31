@@ -5,11 +5,12 @@ import { monthlyPrice, ruleFor, billableWeeks, costFor } from './pricing.js';
 /** Weekly figures for one structure (or one of «my sites»). */
 export function evalSite(site, settings) {
   const s = summarize(site, settings);
-  const sec = (e, days) => e.daily.impressions * e.daily.avgExposure * days;
   return {
     weeklyImp: s.weekly, weeklyOts: s.weeklyOts, score: s.score,
-    weeklyExpSec: sec(s.wk, 5) + sec(s.th, 1) + sec(s.fr, 1),
+    // seconds of the board actually being looked at, summed hour by hour (people who notice it × their seconds)
+    weeklyExpSec: s.weeklySeenSec, weeklyViewSec: s.weeklyViewSec, weeklyVehicles: s.weeklyVehicles,
     dailyImp: s.wk.daily.impressions, exp: s.wk.daily.avgExposure,
+    dailyVeh: s.wk.daily.vehicles, monthlyViewH: s.monthlyViewHours, spread: s.spread,
   };
 }
 

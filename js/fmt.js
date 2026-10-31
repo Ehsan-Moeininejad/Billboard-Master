@@ -22,6 +22,9 @@ export function compactParts(v) {
   return i < 0 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)];
 }
 export const toman = v => v == null ? '—' : `${compact(v)} تومان`;
+/** cost per impression (تومان): «4,120» ; below 10 with one decimal */
+export const cpi = (cost, imp) => (cost > 0 && imp > 0 ? cost / imp : null);
+export const perImp = v => v == null || !Number.isFinite(v) ? '—' : (v >= 10 ? nf.format(Math.round(v)) : nf1.format(v));
 export const hourLabel = h => `${String(h).padStart(2, '0')}:00`;
 export const hourRange = hs => {
   if (!hs?.length) return '—';
