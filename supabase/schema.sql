@@ -11,7 +11,7 @@ create table if not exists public.settings (
 );
 insert into public.settings (key, value) values
   -- ایمیل‌هایی که با اولین ورود مدیر می‌شوند (ایمیل خودتان را اینجا بگذارید؛ بعداً از پنل هم می‌شود مدیر اضافه کرد)
-  ('admin_emails', '["e.moeininejad@digikala.services"]'),
+  ('admin_emails', '["e.moeininejad@gmail.com","moeininejad.digi@gmail.com","e.moeininejad@digikala.services"]'),
   -- دموی خودکار برای هر ثبت‌نام جدید (روز؛ 0 = خاموش، فقط مدیر دمو می‌دهد)
   ('auto_trial_days', '0'),
   -- روش پرداخت: manual = درخواست و فعال‌سازی دستی توسط مدیر، zarinpal = درگاه
