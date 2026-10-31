@@ -4,7 +4,7 @@ import { configured, sb, access, pageUrl, here, toman, num, faDate, faShort, day
 import { ic, logoHTML } from './site-icons.js';
 
 const $ = s => document.querySelector(s);
-const S = { tab: (location.hash || '#dash').slice(1), users: [], pays: [], plans: [], codes: [], invites: [], settings: {}, uf: 'all', uq: '', pf: 'pending', me: null };
+const S = { tab: (location.hash || '#dash').slice(1), users: [], pays: [], plans: [], codes: [], invites: [], orgs: [], settings: {}, uf: 'all', uq: '', pf: 'pending', me: null };
 const TABS = [
   ['dash', 'داشبورد', 'chart'], ['users', 'کاربران و دسترسی', 'users'], ['pays', 'خرید و پرداخت', 'card'],
   ['plans', 'پلن‌ها و قیمت', 'layers'], ['codes', 'کدهای تخفیف', 'tag'], ['settings', 'تنظیمات', 'settings'],
@@ -33,12 +33,13 @@ const FILTERS = [
 ];
 
 // ── load ──
-async function load(which = ['users', 'pays', 'plans', 'codes', 'invites', 'settings']) {
+async function load(which = ['users', 'pays', 'plans', 'codes', 'invites', 'orgs', 'settings']) {
   const jobs = {
     users: () => sb.rpc('admin_users').then(r => { if (r.error) throw r.error; S.users = r.data || []; }),
     pays: () => sb.from('payments').select('*, profiles(email, full_name, phone)').order('created_at', { ascending: false }).limit(500).then(r => { if (r.error) throw r.error; S.pays = r.data || []; }),
     plans: () => sb.from('plans').select('*').order('sort').then(r => { if (r.error) throw r.error; S.plans = r.data || []; }),
     codes: () => sb.from('discount_codes').select('*').order('created_at', { ascending: false }).then(r => { if (r.error) throw r.error; S.codes = r.data || []; }),
+    orgs: () => sb.from('org_access').select('*').order('created_at', { ascending: false }).then(r => { if (r.error) throw r.error; S.orgs = r.data || []; }),
     invites: () => sb.from('invites').select('*').is('used_at', null).order('created_at', { ascending: false }).then(r => { if (r.error) throw r.error; S.invites = r.data || []; }),
     settings: () => sb.from('settings').select('*').then(r => { if (r.error) throw r.error; S.settings = Object.fromEntries((r.data || []).map(x => [x.key, x.value])); }),
   };
@@ -75,7 +76,7 @@ function dash() {
   // signups per week, last 8 weeks
   const weeks = Array.from({ length: 8 }, (_, i) => { const end = now() - i * 7 * 864e5, st0 = end - 7 * 864e5; return U.filter(u => { const t = new Date(u.created_at).getTime(); return t > st0 && t <= end; }).length; }).reverse();
   const wmax = Math.max(1, ...weeks);
-  $('#main').innerHTML = head('داشبورد', `امروز ${faDate(new Date())}`, `<button class="btn btn-primary btn-sm" data-invite>${ic('gift')} دسترسی با ایمیل</button>`) + `
+  $('#main').innerHTML = head('داشبورد', `امروز ${faDate(new Date())}`, `<button class="btn btn-primary btn-sm" data-invite>${ic('gift')} دادن دسترسی</button>`) + `
     <div class="kpis">
       ${kpi('کاربران', num(U.length), `${newU} ثبت‌نام در 7 روز اخیر`, 'acc', 'users')}
       ${kpi('اشتراک فعال', num(act), `${tri} دموی فعال`, '', 'shield')}
@@ -105,7 +106,7 @@ function users() {
   const q = S.uq.trim().toLowerCase();
   const f = FILTERS.find(x => x[0] === S.uf)?.[2] || (() => true);
   const list = S.users.filter(f).filter(u => !q || `${u.email} ${u.full_name || ''} ${u.company || ''} ${u.phone || ''}`.toLowerCase().includes(q));
-  $('#main').innerHTML = head('کاربران و دسترسی', 'روی هر کاربر بزنید تا دسترسی بدهید، تمدید کنید یا بگیرید.', `<button class="btn btn-ghost btn-sm" data-csv>${ic('copy')} خروجی CSV</button><button class="btn btn-primary btn-sm" data-invite>${ic('gift')} دسترسی با ایمیل</button>`) + `
+  $('#main').innerHTML = head('کاربران و دسترسی', 'روی هر کاربر بزنید تا دسترسی بدهید، تمدید کنید یا بگیرید.', `<button class="btn btn-ghost btn-sm" data-csv>${ic('copy')} خروجی CSV</button><button class="btn btn-primary btn-sm" data-invite>${ic('gift')} دادن دسترسی</button>`) + `
     <div class="toolbar"><input class="inp inp-sm" id="uq" placeholder="جستجوی ایمیل، نام، شرکت، موبایل" value="${esc(S.uq)}">
       <div class="seg">${FILTERS.map(([k, l]) => `<button class="${S.uf === k ? 'on' : ''}" data-uf="${k}">${l}<i>${counts[k]}</i></button>`).join('')}</div></div>
     <div class="card" style="padding:6px 8px"><div class="tbl-wrap"><table class="tbl"><thead><tr><th>کاربر</th><th>وضعیت</th><th>دسترسی تا</th><th>پرداختی</th><th>عضویت</th><th>آخرین بازدید</th><th></th></tr></thead><tbody>
@@ -116,6 +117,10 @@ function users() {
       <td>${u.paid_total ? toman(u.paid_total) : '—'}</td><td>${faShort(u.created_at)}</td><td>${u.last_seen ? faShort(u.last_seen) : '—'}</td>
       <td><button class="btn btn-ghost btn-xs">مدیریت</button></td></tr>`; }).join('') || `<tr><td colspan="7" class="empty">کاربری با این فیلتر نیست</td></tr>`}
     </tbody></table></div></div>
+    ${S.orgs.length ? `<div class="card" style="margin-top:16px"><h3>دسترسی سازمانی (دامنه ایمیل)</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>دامنه</th><th>دسترسی هر نفر</th><th>عضوهای این دامنه</th><th>مهلت ثبت‌نام</th><th>یادداشت</th><th>وضعیت</th><th></th></tr></thead><tbody>
+      ${S.orgs.map(o => { const n = S.users.filter(u => u.email?.endsWith('@' + o.domain)).length; const live = o.active && (!o.until || new Date(o.until) > now()); return `<tr><td class="ltr" style="text-align:right"><b>@${esc(o.domain)}</b></td><td>${KIND_FA[o.kind]} · ${o.days} روز</td><td>${n} نفر${n ? ` <button class="btn btn-ghost btn-xs" data-org-users="${esc(o.domain)}">ببین</button>` : ''}</td><td>${o.until ? faShort(o.until) : 'بدون مهلت'}</td><td>${esc(o.note || '')}</td><td>${live ? '<span class="chip good"><i></i>فعال</span>' : '<span class="chip">خاموش</span>'}</td>
+        <td><div class="inline" style="flex-wrap:nowrap"><button class="btn btn-ghost btn-xs" data-org-toggle="${esc(o.domain)}">${o.active ? 'خاموش' : 'روشن'}</button><button class="btn btn-danger btn-xs" data-org-del="${esc(o.domain)}">${ic('trash')}</button></div></td></tr>`; }).join('')}
+    </tbody></table></div><p class="fine" style="text-align:start;margin-top:8px">هر کس با ایمیل این دامنه ثبت‌نام کند، خودکار همین دسترسی را می‌گیرد. خاموش کردن، دسترسیِ داده‌شده را نمی‌گیرد؛ برای آن از «گرفتن دسترسی» هر نفر استفاده کنید.</p></div>` : ''}
     ${S.invites.length ? `<div class="card" style="margin-top:16px"><h3>دسترسی‌های تعریف‌شده برای کسانی که هنوز ثبت‌نام نکرده‌اند</h3><div class="tbl-wrap"><table class="tbl"><thead><tr><th>ایمیل</th><th>دسترسی</th><th>یادداشت</th><th>تاریخ</th><th></th></tr></thead><tbody>
       ${S.invites.map(i => `<tr><td class="ltr" style="text-align:right">${esc(i.email)}</td><td>${KIND_FA[i.kind]} · ${i.days} روز</td><td>${esc(i.note || '')}</td><td>${faShort(i.created_at)}</td><td><button class="btn btn-danger btn-xs" data-del-inv="${esc(i.email)}">حذف</button></td></tr>`).join('')}
     </tbody></table></div><p class="fine" style="text-align:start;margin-top:8px">این دسترسی با اولین ورود همان ایمیل (گوگل یا ایمیل و رمز) خودکار فعال می‌شود.</p></div>` : ''}`;
@@ -123,6 +128,9 @@ function users() {
   document.querySelectorAll('[data-uf]').forEach(b => { b.onclick = () => { S.uf = b.dataset.uf; users(); }; });
   document.querySelectorAll('[data-del-inv]').forEach(b => { b.onclick = async () => { const { error } = await sb.from('invites').delete().eq('email', b.dataset.delInv); if (error) return toast(errFa(error), 'bad'); await load(['invites']); users(); toast('حذف شد'); }; });
   $('[data-csv]').onclick = () => csv(list);
+  document.querySelectorAll('[data-org-toggle]').forEach(b => { b.onclick = async () => { const o = S.orgs.find(x => x.domain === b.dataset.orgToggle); const { error } = await sb.from('org_access').update({ active: !o.active }).eq('domain', o.domain); if (error) return toast(errFa(error), 'bad'); await load(['orgs']); users(); }; });
+  document.querySelectorAll('[data-org-del]').forEach(b => { b.onclick = async () => { if (!(await confirmBox('حذف دسترسی سازمانی', `ثبت‌نام‌های تازه از @${esc(b.dataset.orgDel)} دیگر دسترسی خودکار نمی‌گیرند. دسترسی کسانی که قبلاً گرفته‌اند باقی می‌ماند.`, 'حذف'))) return; const { error } = await sb.from('org_access').delete().eq('domain', b.dataset.orgDel); if (error) return toast(errFa(error), 'bad'); await load(['orgs']); users(); }; });
+  document.querySelectorAll('[data-org-users]').forEach(b => { b.onclick = () => { S.uq = '@' + b.dataset.orgUsers; S.uf = 'all'; users(); }; });
   bindCommon();
 }
 function csv(list) {
@@ -337,28 +345,56 @@ function settings() {
   };
 }
 
-// ── invite / grant by email ──
+// ── give access: one or many emails, or a whole company domain ──
+const DOMAIN_RE = /^@?[a-z0-9.-]+\.[a-z]{2,}$/i, EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 async function inviteBox() {
   const d = $('#dlg');
-  d.innerHTML = `<div class="modal-head"><h3>دسترسی با ایمیل</h3><button class="x-btn" data-x>×</button></div>
-    <form class="modal-body" id="ivf"><p style="margin:0;color:var(--text-2);font-size:13px">اگر این ایمیل عضو است، دسترسی فوراً اضافه می‌شود؛ اگر نه، با اولین ورودش (گوگل یا ایمیل) فعال می‌شود.</p>
-      <div class="field"><label>ایمیل</label><input class="inp ltr" id="iv_e" type="email" required placeholder="name@company.com"></div>
+  d.innerHTML = `<div class="modal-head"><h3>دادن دسترسی</h3><button class="x-btn" data-x>×</button></div>
+    <form class="modal-body" id="ivf">
+      <div class="field"><label for="iv_e">ایمیل‌ها یا دامنه شرکت (هر خط یکی)</label>
+        <textarea class="inp ltr" id="iv_e" style="text-align:left;min-height:96px" placeholder="ali@company.com&#10;sara@agency.ir&#10;@company.com"></textarea>
+        <small>ایمیلِ عضو فوراً دسترسی می‌گیرد؛ ایمیلِ ثبت‌نام‌نکرده با اولین ورودش. <b>@company.com</b> یعنی هر کس از آن شرکت ثبت‌نام کند.</small></div>
       <div class="field"><label>دسترسی</label><div class="seg" id="iv_p">${PRESETS.map(([k, t], i) => `<button type="button" data-k="${k}" class="${i === 0 ? 'on' : ''}">${t.replace('+ ', '')}</button>`).join('')}<button type="button" data-k="custom">دلخواه</button></div></div>
       <div class="inline" id="iv_c" hidden><input class="inp inp-sm ltr" id="iv_d" type="number" min="1" placeholder="روز"><select class="sel inp-sm" id="iv_k"><option value="trial">دمو</option><option value="gift">هدیه</option><option value="paid">اشتراک</option></select></div>
-      <div class="field"><label>یادداشت</label><input class="inp" id="iv_n" placeholder="اختیاری"></div>
+      <div id="iv_dom" hidden style="display:grid;gap:8px">
+        <label class="switch"><input type="checkbox" id="iv_ex" checked>به عضوهای فعلی این دامنه هم بده (اگر دسترسی فعال ندارند)</label>
+        <div class="inline"><span style="font-size:12.5px;color:var(--text-2)">ثبت‌نام‌های تازه تا</span><input class="inp inp-sm ltr" id="iv_until" type="number" min="1" placeholder="30" style="max-width:80px"><span style="font-size:12.5px;color:var(--text-2)">روز دیگر دسترسی بگیرند (خالی = بدون مهلت)</span></div>
+      </div>
+      <div class="field"><label>یادداشت</label><input class="inp" id="iv_n" placeholder="مثلاً: دموی شرکت X برای جلسه 15 آبان"></div>
+      <div id="iv_msg"></div>
       <button class="btn btn-primary btn-block" type="submit">${ic('gift')} ثبت دسترسی</button></form>`;
   let pick = 'trial7';
   d.querySelectorAll('#iv_p button').forEach(b => { b.onclick = () => { pick = b.dataset.k; d.querySelectorAll('#iv_p button').forEach(x => x.classList.toggle('on', x === b)); $('#iv_c').hidden = pick !== 'custom'; }; });
+  const lines = () => $('#iv_e').value.split(/[\s,;]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
+  $('#iv_e').oninput = () => { $('#iv_dom').hidden = !lines().some(x => !x.includes('@') || x.startsWith('@')); };
   d.querySelector('[data-x]').onclick = () => d.close();
   $('#ivf').onsubmit = async e => {
     e.preventDefault();
     let days, kind;
     if (pick === 'custom') { days = +$('#iv_d').value; kind = $('#iv_k').value; } else { [, , days, kind] = PRESETS.find(p => p[0] === pick); }
     if (!(days > 0)) return toast('تعداد روز را بنویسید', 'bad');
-    const { data, error } = await sb.rpc('admin_grant_email', { p_email: $('#iv_e').value, p_days: days, p_kind: kind, p_plan: kind === 'paid' ? planFor(days) : null, p_note: $('#iv_n').value.trim() || null });
-    if (error) return toast(errFa(error), 'bad');
-    d.close(); toast(data.invited ? 'ثبت شد؛ با اولین ورود فعال می‌شود' : 'دسترسی اضافه شد', 'good');
-    await load(['users', 'invites']); render();
+    const items = lines();
+    if (!items.length) return toast('حداقل یک ایمیل یا دامنه بنویسید', 'bad');
+    const bad = items.filter(x => !(EMAIL_RE.test(x) && !x.startsWith('@')) && !DOMAIN_RE.test(x));
+    if (bad.length) return toast(`نامعتبر: ${bad.join('، ')}`, 'bad');
+    const note = $('#iv_n').value.trim() || null, btn = d.querySelector('button[type=submit]');
+    btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+    const out = { now: 0, later: 0, dom: [], err: [] };
+    for (const x of items) {
+      if (EMAIL_RE.test(x) && !x.startsWith('@')) {
+        const { data, error } = await sb.rpc('admin_grant_email', { p_email: x, p_days: days, p_kind: kind, p_plan: kind === 'paid' ? planFor(days) : null, p_note: note });
+        if (error) out.err.push(`${x}: ${errFa(error)}`); else data.invited ? out.later++ : out.now++;
+      } else {
+        const u = +$('#iv_until').value;
+        const { data, error } = await sb.rpc('admin_grant_domain', { p_domain: x, p_days: days, p_kind: kind, p_note: note, p_existing: $('#iv_ex').checked, p_until: u ? new Date(now() + u * 864e5).toISOString() : null });
+        if (error) out.err.push(`${x}: ${errFa(error)}`); else out.dom.push(`@${data.domain}${data.existing ? ` (${data.existing} عضو فعلی)` : ''}`);
+      }
+    }
+    btn.disabled = false; btn.innerHTML = `${ic('gift')} ثبت دسترسی`;
+    const parts = [out.now && `${out.now} نفر همین حالا`, out.later && `${out.later} نفر با اولین ورود`, out.dom.length && `دامنه ${out.dom.join('، ')}`].filter(Boolean);
+    await load(['users', 'invites', 'orgs']); render();
+    if (out.err.length) { $('#iv_msg').innerHTML = `<div class="alert bad">${ic('alert')}<span>${out.err.map(esc).join('<br>')}</span></div>`; if (parts.length) toast(`ثبت شد: ${parts.join('، ')}`, 'good'); return; }
+    d.close(); toast(`${KIND_FA[kind]} ${days} روزه ثبت شد: ${parts.join('، ')}`, 'good');
   };
   d.showModal(); $('#iv_e').focus();
 }
