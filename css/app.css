@@ -896,6 +896,7 @@ table.board-tbl td.rd { max-width: 150px; overflow: hidden; text-overflow: ellip
 .as-msg { font-size: 13px; line-height: 1.85; border-radius: 12px; padding: 9px 12px; max-width: 100%; }
 .as-msg.me { align-self: flex-start; background: var(--accent-soft); border: 1px solid rgba(91,140,255,.3); max-width: 88%; white-space: pre-wrap; }
 .as-msg.ai { background: var(--surface-2); border: 1px solid var(--line); }
+.as-goto { margin: 8px 0 2px; text-decoration: none; }
 .as-txt p { margin: 0 0 8px; } .as-txt p:last-child { margin: 0; }
 .as-txt ul { margin: 0 0 8px; padding-right: 18px; }
 .as-via { font-size: 10.5px; color: var(--muted); margin-top: 4px; }

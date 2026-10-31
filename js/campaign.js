@@ -2,8 +2,9 @@
 // gathers and rank billboard structures by how close they sit to those hotspots, combined with the structure's own score.
 // Used by the campaign assistant (chat) and the hotspot panel. Pure functions; no network.
 import { distToShape } from './hotspots.js';
+import { CITIES } from './cities.js';
 
-const KX = 111320 * Math.cos(35.7 * Math.PI / 180), KY = 110540;
+const KX = 111320 * Math.cos((CITIES[new URLSearchParams(globalThis.location?.search || '').get('city')]?.center?.[0] ?? 35.7) * Math.PI / 180), KY = 110540; // metres per degree at this city's latitude
 const dm = (a, b) => Math.hypot((a.lat - b.lat) * KY, (a.lng - b.lng) * KX);
 const toLatin = s => String(s).replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
 
@@ -25,6 +26,23 @@ const WORDS = {
   b2b: ['سازمانی', 'شرکتی', 'b2b', 'کارمند', 'شاغل', 'اداری', 'بیزینس', 'کسب‌وکار', 'کسب و کار'],
   reach: ['آگاهی', 'برندینگ', 'عمومی', 'حداکثر دیده', 'رفت‌وآمد', 'پربازدید'],
 };
+
+// city names as people write them (also «اصفهان»/«اصفهانی»، English slugs)
+const CITY_WORDS = Object.fromEntries(Object.entries(CITIES).map(([slug, c]) => [slug, [c.fa, slug, ...({ isfahan: ['esfahan'], karaj: ['البرز'], mashhad: ['خراسان'], gorgan: ['گلستان'], sari: ['مازندران'] }[slug] || [])]]));
+/** the city a brief names: the current city if it is named at all («اتوبان تهران-کرج» on the Karaj page stays Karaj),
+ *  otherwise the first other city named; null when none is named */
+export function cityOf(text, current) {
+  const t = toLatin(text || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').toLowerCase();
+  const at = w => { const m = new RegExp(`(?:^|[^\u0600-\u06FFa-z])${w.toLowerCase()}(?![\u0600-\u06FF]{0,0}[\u0600-\u06FF]{3})`).exec(t); return m ? m.index : -1; };
+  let first = null, firstAt = Infinity;
+  for (const [slug, ws] of Object.entries(CITY_WORDS)) {
+    const i = Math.min(...ws.map(at).filter(x => x >= 0), Infinity);
+    if (i === Infinity) continue;
+    if (slug === current) return current;
+    if (i < firstAt) { firstAt = i; first = slug; }
+  }
+  return first;
+}
 
 // read category, budget, months, districts and number of boards from free Persian text
 export function parseBrief(text) {
