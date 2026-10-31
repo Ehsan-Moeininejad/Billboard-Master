@@ -1,0 +1,3 @@
+# Edge function settings (used by the Supabase CLI; in the dashboard turn off "Enforce JWT verification" for zarinpal)
+[functions.zarinpal]
+verify_jwt = false
