@@ -1,7 +1,2 @@
-// اتصال به Supabase (حساب کاربری و اشتراک).
-// این دو مقدار عمومی‌اند و جایشان همین‌جاست: Supabase → Project Settings → API (یا Data API)
-//   SUPABASE_URL      = Project URL            (مثل https://abcdxyz.supabase.co)
-//   SUPABASE_ANON_KEY = anon / publishable key (کلید service_role را هرگز اینجا نگذارید)
-// تا وقتی خالی‌اند، سایت مثل قبل بدون ورود باز می‌شود.
-export const SUPABASE_URL = '';
-export const SUPABASE_ANON_KEY = '';
+   export const SUPABASE_URL = 'https://gqqdainnfegvkegsburp.supabase.co';
+   export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdxcWRhaW5uZmVndmtlZ3NidXJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM0NzgyMDMsImV4cCI6MjEwOTA1NDIwM30.D3Eg0u20Nt1ZzptDkYsAC7pUyCzvY_o_Kzgr08OlaOI';
