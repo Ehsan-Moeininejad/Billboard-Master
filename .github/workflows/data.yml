@@ -1,6 +1,7 @@
 name: Weekly data update
 
-# Every 7 days: real Tehran billboard structures and their listed prices (Rasamap open dataset, MIT),
+# Every 7 days: traffic and the site; billboard structures and their listed prices (Rasamap open dataset, MIT) once
+# every 28 days (vars.MARKET_EVERY_DAYS; manual run «force_market» rebuilds now),
 # traffic at each structure from the Neshan API (secret NESHAN_KEY), optional team price feed
 # (data/price-sources.json), a fresh site deploy, and a summary email (secrets SMTP_USER, SMTP_PASS, MAIL_TO).
 # GitHub's own schedule is a backup; the reliable trigger is cron-job.org calling workflow_dispatch
@@ -14,6 +15,10 @@ on:
     inputs:
       all_cities:
         description: 'Build roads, hotspots and traffic for every city now (first setup)'
+        type: boolean
+        default: false
+      force_market:
+        description: 'Rebuild the billboard lists now (normally once every 28 days)'
         type: boolean
         default: false
 
@@ -58,8 +63,11 @@ jobs:
         id: roads
         run: node scripts/build-roads.mjs
         continue-on-error: true
-      - name: Build market (structures + prices)
+      - name: Build market (structures + prices, monthly)
         id: market
+        env:
+          MARKET_EVERY_DAYS: ${{ vars.MARKET_EVERY_DAYS || '28' }}
+          MARKET_FORCE: ${{ github.event.inputs.force_market == 'true' && '1' || '0' }}
         run: node scripts/build-market.mjs .cache/rs/flagged.json
       - name: Traffic from Neshan (needs the NESHAN_KEY secret)
         id: traffic
@@ -91,6 +99,8 @@ jobs:
           NESHAN_CITY_CALLS: ${{ vars.NESHAN_CITY_CALLS || '250' }}
           CITIES_PER_WEEK: ${{ vars.CITIES_PER_WEEK || '2' }}
           CITIES_ALL: ${{ github.event.inputs.all_cities || 'false' }}
+          MARKET_EVERY_DAYS: ${{ vars.MARKET_EVERY_DAYS || '28' }}
+          MARKET_FORCE: ${{ github.event.inputs.force_market == 'true' && '1' || '0' }}
         run: |
           node scripts/update-cities.mjs .cache/rs/flagged.json
           git add data/cities data/cities.json data/cities-state.json
