@@ -19,6 +19,7 @@ export const CITIES = {
   kerman: { fa: 'کرمان', center: [30.2852, 57.0648], zoom: 13, bounds: [[30.15, 56.90], [30.42, 57.23]], box: [30.20, 56.95, 30.36, 57.17], sources: ['کرمان'], suburbs: ['ماهان'], volF: 0.55, districts: true, minDistricts: 3, zones: true, limited: true },
   yazd: { fa: 'یزد', center: [31.8974, 54.3600], zoom: 13, bounds: [[31.76, 54.18], [32.03, 54.54]], box: [31.82, 54.25, 31.98, 54.47], sources: ['یزد'], volF: 0.55, districts: true, minDistricts: 2, zones: true },
   sari: { fa: 'ساری', center: [36.5600, 53.0600], zoom: 13, bounds: [[36.45, 52.92], [36.66, 53.20]], box: [36.50, 52.98, 36.61, 53.14], sources: ['ساری'], volF: 0.5, districts: true, minDistricts: 2, zones: true, limited: true },
+  tabriz: { fa: 'تبریز', center: [38.0792, 46.2887], zoom: 12, bounds: [[37.95, 46.08], [38.20, 46.50]], box: [38.00, 46.16, 38.14, 46.42], sources: ['تبریز'], suburbs: ['سردرود'], volF: 0.7, districts: true, minDistricts: 5, zones: true },
   gorgan: { fa: 'گرگان', center: [36.8400, 54.4394], zoom: 13, bounds: [[36.74, 54.28], [36.93, 54.59]], box: [36.79, 54.35, 36.88, 54.52], sources: ['گرگان'], volF: 0.5, districts: true, minDistricts: 2, zones: true, limited: true },
 };
 export const CITY_SLUGS = Object.keys(CITIES);

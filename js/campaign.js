@@ -28,7 +28,7 @@ const WORDS = {
 };
 
 // city names as people write them (also «اصفهان»/«اصفهانی»، English slugs)
-const CITY_WORDS = Object.fromEntries(Object.entries(CITIES).map(([slug, c]) => [slug, [c.fa, slug, ...({ isfahan: ['esfahan'], karaj: ['البرز'], mashhad: ['خراسان'], gorgan: ['گلستان'], sari: ['مازندران'] }[slug] || [])]]));
+const CITY_WORDS = Object.fromEntries(Object.entries(CITIES).map(([slug, c]) => [slug, [c.fa, slug, ...({ isfahan: ['esfahan'], karaj: ['البرز'], mashhad: ['خراسان'], gorgan: ['گلستان'], sari: ['مازندران'], tabriz: ['آذربایجان', 'تبريز'] }[slug] || [])]]));
 /** the city a brief names: the current city if it is named at all («اتوبان تهران-کرج» on the Karaj page stays Karaj),
  *  otherwise the first other city named; null when none is named */
 export function cityOf(text, current) {

@@ -2,12 +2,13 @@
 // Every write goes through Supabase with the admin's own login; the database rules (supabase/schema.sql) refuse non-admins.
 import { configured, sb, access, pageUrl, here, toman, num, faDate, faShort, daysLeft, esc, errFa, toast, KIND_FA, avatarHTML, signOut } from './auth.js';
 import { ic, logoHTML } from './site-icons.js';
+import { structsPage } from './admin-structs.js';
 
 const $ = s => document.querySelector(s);
 const S = { tab: (location.hash || '#dash').slice(1), users: [], pays: [], plans: [], codes: [], invites: [], orgs: [], settings: {}, uf: 'all', uq: '', pf: 'pending', me: null };
 const TABS = [
   ['dash', 'داشبورد', 'chart'], ['users', 'کاربران و دسترسی', 'users'], ['pays', 'خرید و پرداخت', 'card'],
-  ['plans', 'پلن‌ها و قیمت', 'layers'], ['codes', 'کدهای تخفیف', 'tag'], ['settings', 'تنظیمات', 'settings'],
+  ['structs', 'سازه‌ها و قیمت‌ها', 'board'], ['plans', 'پلن‌ها و قیمت', 'layers'], ['codes', 'کدهای تخفیف', 'tag'], ['settings', 'تنظیمات', 'settings'],
 ];
 const PRESETS = [['trial7', 'دموی 7 روزه', 7, 'trial'], ['m1', '+ 1 ماه', 30, 'paid'], ['m3', '+ 3 ماه', 91, 'paid'], ['m12', '+ 12 ماه', 365, 'paid']];
 const planFor = days => S.plans.find(p => Math.abs(p.months * 30.4 - days) < 6)?.id || null;
@@ -58,7 +59,7 @@ function shell() {
   $('#side [data-out]').onclick = signOut;
 }
 function go(tab) { S.tab = tab; history.replaceState(null, '', `#${tab}`); closeDrawer(); shell(); render(); window.scrollTo(0, 0); }
-function render() { ({ dash, users, pays, plans, codes, settings }[S.tab] || dash)(); }
+function render() { ({ dash, users, pays, plans, codes, settings, structs: () => structsPage($('#main')) }[S.tab] || dash)(); }
 const head = (t, s, actions = '') => `<div class="page-h"><div><h1>${t}</h1>${s ? `<p>${s}</p>` : ''}</div><div class="inline">${actions}</div></div>`;
 const kpi = (l, v, s = '', cls = '', icn = '') => `<div class="kpi ${cls}"><div class="kpi-l">${icn ? ic(icn) : ''}${l}</div><div class="kpi-v">${v}</div>${s ? `<div class="kpi-s">${s}</div>` : ''}</div>`;
 const planTitle = id => S.plans.find(p => p.id === id)?.title || id || '';

@@ -7,6 +7,8 @@ import { evalSite, buildOptions, optimize, budgetCurve, OBJECTIVES } from './pla
 import { loadInventory, saveInventory, parseTable, TYPE_FA, SOURCE_FA } from './inventory.js';
 import { smsText, circleRing, SMS_POINT_RADIUS } from './geofence.js';
 import { parseQuery, matches as queryMatches, nameHits, roadHits, normFa } from './search-local.js';
+import { applyUploads } from './uploads.js';
+import { sb as authSb } from './auth.js';
 import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market.js';
 import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
@@ -61,14 +63,16 @@ async function init() {
   // a tap on a phone only closes what is open; adding or analysing needs a long press (desktop: click as before,
   // or right-click). A stray tap while panning should never add a point or a structure.
   const coarse = () => matchMedia('(pointer: coarse)').matches;
-  let tapHintShown = false;
+  let tapHintShown = false, clickHintShown = false;
   map.on('click', e => {
     closePops();
     if (coarse()) {
       if (!tapHintShown && (state.mapMode === 'addStructure' || state.listTab === 'sites' || state.selectedId)) { tapHintShown = true; toast('برای افزودن یا تحلیل، انگشت را روی نقشه نگه دارید', ''); }
       return;
     }
-    mapPick(e);
+    // desktop: a left click analyses only when that is switched on (layers menu); a right click always does
+    if (state.mapMode === 'addStructure' || state.settings.clickAnalyze) { mapPick(e); return; }
+    if (!clickHintShown && (state.listTab === 'sites' || state.selectedId)) { clickHintShown = true; toast('برای تحلیل یک نقطه روی نقشه کلیک راست کنید', ''); }
   });
   map.on('contextmenu', e => { e.originalEvent?.preventDefault?.(); closePops(); mapPick(e); });
   function mapPick(e) {
@@ -435,7 +439,7 @@ function listHTML() {
   const nCmp = state.sites.filter(s => s.inCompare !== false && isReady(s)).length;
   return `${guideHTML('compare')}<div class="p-head flat">
       <div class="p-head-row"><h1 class="p-title">مقایسه نقاط</h1><span class="chip">${state.sites.length} نقطه</span></div>
-      <div class="p-sub">برآورد روز کاری · روی نقشه کلیک کنید تا نقطه جدید اضافه شود</div>
+      <div class="p-sub">برآورد روز کاری · ${matchMedia('(pointer: coarse)').matches ? 'انگشت را روی نقطه‌ای نگه دارید' : state.settings.clickAnalyze ? 'روی نقشه کلیک کنید' : 'روی نقشه کلیک راست کنید'} تا نقطه جدید اضافه شود</div>
     </div>
     <div class="cards">${rows}</div>
     <div class="p-sec" style="border:0;padding-bottom:6px">
@@ -871,7 +875,7 @@ function onPanelClick(e) {
     case 'open-board': openPlanner('board'); break;
     case 'ltab':
       state.listTab = t.dataset.v; state.mapMode = null; setModeHint(null); document.body.classList.remove('picking'); map.closePopup();
-      if (state.listTab === 'sites' && !state.sites.length) setModeHint('روی هر نقطه از بزرگراه یا پل کلیک کنید تا تحلیل شود');
+      if (state.listTab === 'sites' && !state.sites.length) setModeHint(matchMedia('(pointer: coarse)').matches ? 'انگشت را روی هر نقطه از بزرگراه یا پل نگه دارید تا تحلیل شود' : state.settings.clickAnalyze ? 'روی هر نقطه از بزرگراه یا پل کلیک کنید تا تحلیل شود' : 'روی هر نقطه از بزرگراه یا پل کلیک راست کنید تا تحلیل شود');
       if (state.listTab === 'inventory') { setStructuresLayer(true); }
       if (state.listTab !== 'finder' && finderLayer && !state.finder.result) drawFinder();
       renderPanel(); if (state.listTab === 'inventory') rerank();
@@ -1515,7 +1519,7 @@ function structPopup(st, r) {
   if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, scoreParts: pe.scoreParts, imp: pe.ev.dailyImp, exp: pe.ev.exp, veh: pe.ev.dailyVeh };
   const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span title="${esc(scoreTip(r))}">امتیاز <b>${r.score}</b></span>${r.veh ? `<span><b>${compact(r.veh)}</b> خودرو/روز</span>` : ''}<span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه مواجهه</span>${popCpi(st, r)}</div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
   const e = state.plan.entries?.find(x => x.id === st.id);
-  const priceNote = st.priceSource === 'manual' ? '' : st.agency ? ` · ${esc(st.site || 'نرخ‌نامه آژانس')}` : st.priceEstimated ? ` · <span title="${esc(st.priceBasis || '')}${st.sourcePrice ? ` — قیمت منبع: ${toman(st.sourcePrice)}` : ''}">برآورد</span>` : '';
+  const priceNote = st.priceSource === 'manual' ? '' : st.priceSource === 'upload' ? ' · فهرست به‌روز' : st.agency ? ` · ${esc(st.site || 'نرخ‌نامه آژانس')}` : st.priceEstimated ? ` · <span title="${esc(st.priceBasis || '')}${st.sourcePrice ? ` — قیمت منبع: ${toman(st.sourcePrice)}` : ''}">برآورد</span>` : '';
   const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${priceNote}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
   const avail = st.agency && (st.reservedUntil || st.window) ? `<div class="pop-avail">${icon('clock')} ${st.reservedUntil ? `رزرو تا ${esc(st.reservedUntil)}` : 'آزاد'}${st.window ? ` · قابل اکران ${esc(st.window)}` : ''}${st.code ? ` · کد ${esc(st.code)}` : ''}</div>` : '';
   const addr = st.address && st.address !== st.name ? `<div class="pop-addr">${esc(st.address)}</div>` : '';
@@ -1564,6 +1568,19 @@ async function loadMarket() {
     persistInventory(); rankById.clear();
     if (added) toast(`${added} سازه واقعی از فهرست بازار اضافه شد`, 'ok');
   } catch { state.market = null; }
+  await loadUploads();
+}
+
+// structures and prices the admin uploaded (Excel / CSV in the admin panel), on top of the market list
+async function loadUploads() {
+  if (!authSb) return;
+  try {
+    const { data, error } = await authSb.from('custom_structures').select('*').eq('city', CITY.slug).eq('active', true).limit(5000);
+    if (error) throw error;
+    applyUploads(state.inventory, data || []);
+    persistInventory(); rankById.clear();
+    if (state.market) state.market.uploads = (data || []).length;
+  } catch (e) { console.warn('uploads', e.message || e); }
 }
 
 /** Re-sync manual coefficients and recompute fair price / value index on the evaluated entries. */
@@ -2107,7 +2124,7 @@ function pricesHTML() {
   revalue();
   const evById = new Map((P.entries || []).map(e => [e.id, e]));
   const list = state.inventory.filter(x => !q || x.name.includes(q) || (x.owner || '').includes(q) || (x.address || '').includes(q));
-  const PS = { feed: 'فید', manual: 'دستی', import: 'فایل', market: 'بازار', agency: 'نرخ‌نامه آژانس' };
+  const PS = { feed: 'فید', manual: 'دستی', import: 'فایل', market: 'بازار', agency: 'نرخ‌نامه آژانس', upload: 'فهرست مدیر' };
   const priceRows = list.slice(0, 200).map(x => {
     const d = x.prevPrice && x.price ? x.price / x.prevPrice - 1 : null;
     const e = evById.get(x.id);
@@ -2838,7 +2855,7 @@ async function startTask(key) {
     state.listTab = 'inventory'; renderPanel(); openPlanner('plan');
   } else if (key === 'compare') {
     state.listTab = 'sites'; renderPanel(); fitSites();
-    if (!state.sites.length) setModeHint('روی هر نقطه از بزرگراه یا پل کلیک کنید تا تحلیل شود');
+    if (!state.sites.length) setModeHint(matchMedia('(pointer: coarse)').matches ? 'انگشت را روی هر نقطه از بزرگراه یا پل نگه دارید تا تحلیل شود' : state.settings.clickAnalyze ? 'روی هر نقطه از بزرگراه یا پل کلیک کنید تا تحلیل شود' : 'روی هر نقطه از بزرگراه یا پل کلیک راست کنید تا تحلیل شود');
   } else if (key === 'finder') {
     state.listTab = 'finder'; renderPanel();
   }
@@ -2854,7 +2871,7 @@ function openHelp() {
       <li><b>شهر را انتخاب کنید</b> (منوی کنار نام سایت). هر شهر سازه‌ها، قیمت‌ها و نقاط ذخیره‌شده خودش را دارد.</li>
       <li><b>محدوده را مشخص کنید</b>: در تب «بهترین سازه‌ها» یکی از «کل شهر»، «مناطق شهرداری» یا «محدوده نقشه». سازه‌ها بر اساس ایمپرشن، ارزش خرید یا CPM مرتب می‌شوند.</li>
       <li><b>هر سازه را باز کنید</b>: قیمت، منبع قیمت (نرخ‌نامه آژانس یا برآورد)، ایمپرشن روزانه و ماهانه و هات‌اسپات اطرافش را می‌بینید. «تحلیل کامل» جزئیات ساعت‌به‌ساعت و بخش «این عددها چطور حساب شد» را نشان می‌دهد.</li>
-      <li><b>نقطه دلخواه را تحلیل کنید</b>: ${touch ? 'انگشت را روی نقشه <b>نگه دارید</b>' : 'روی نقشه کلیک (یا کلیک راست) کنید'}. ${touch ? 'یک ضربه کوتاه چیزی اضافه نمی‌کند تا هنگام جابه‌جا کردن نقشه اشتباهی نقطه یا سازه ثبت نشود.' : ''}</li>
+      <li><b>نقطه دلخواه را تحلیل کنید</b>: ${touch ? 'انگشت را روی نقشه <b>نگه دارید</b>' : 'روی نقشه <b>کلیک راست</b> کنید (اگر کلیک چپ را ترجیح می‌دهید، در منوی لایه‌ها «تحلیل با کلیک چپ» را روشن کنید)'}. ${touch ? 'یک ضربه کوتاه چیزی اضافه نمی‌کند تا هنگام جابه‌جا کردن نقشه اشتباهی نقطه یا سازه ثبت نشود.' : ''}</li>
       <li><b>کمپین بچینید</b>: در «کمپین با بودجه» بودجه و مدت را بدهید؛ بهترین ترکیب سازه‌ها انتخاب می‌شود. «دستیار کمپین» همین کار را از یک جمله فارسی انجام می‌دهد.</li>
       <li><b>هات‌اسپات‌ها</b> (آیکون شعله): جاهای تجمع مردم برای تبلیغ هدفمند؛ مختصات هر محدوده را برای پیامک لوکیشن، GeoJSON یا KML کپی کنید.</li>
       <li><b>اصلاح داده</b>: قیمت قطعی، تعداد خط یا حجم تردد واقعی را که می‌دانید وارد کنید؛ جایگزین تخمین می‌شود. سازه‌ها قفل‌اند؛ برای جابه‌جایی «جابه‌جا کردن این سازه» را در پنجره‌اش بزنید.</li>
@@ -2960,6 +2977,8 @@ function bindChrome() {
   $('#lyrStructures').addEventListener('change', e => setStructuresLayer(e.target.checked));
   $('#lyrDistricts').addEventListener('change', e => setDistrictLayer(e.target.checked));
   if (!CITY.districts) $('#lyrDistricts').closest('.switch-row').hidden = true;
+  $('#lyrClick').checked = !!state.settings.clickAnalyze;
+  $('#lyrClick').addEventListener('change', e => { state.settings.clickAnalyze = e.target.checked; save(); toast(e.target.checked ? 'کلیک چپ روی نقشه نقطه را تحلیل می‌کند' : 'تحلیل فقط با کلیک راست', 'ok'); });
   $('#lyrUnlock').checked = !!state.settings.unlockMove;
   $('#lyrUnlock').addEventListener('change', e => { state.settings.unlockMove = e.target.checked; save(); unlockedIds.clear(); drawStructures(); toast(e.target.checked ? 'سازه‌ها آزادند؛ با کشیدن جابه‌جا می‌شوند' : 'سازه‌ها قفل شدند', 'ok'); });
   document.addEventListener('click', e => {

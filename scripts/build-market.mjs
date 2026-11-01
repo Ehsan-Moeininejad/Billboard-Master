@@ -16,11 +16,24 @@ import { makeGeocoder, gazetteerQuery, buildGazetteer } from './geocode.mjs';
 import { fitRateCard, median, DEFAULT_M2 } from './price-calib.mjs';
 import { OVERPASS_ENDPOINTS } from '../js/config.js';
 import { readdirSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
 // --city=<slug> builds another city into data/cities/<slug>/; without it everything below is Tehran, unchanged
 const SLUG = (process.argv.find(a => a.startsWith('--city=')) || '--city=tehran').slice(7);
 if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
 const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
+// billboard listings change slowly: rebuild once every MARKET_EVERY_DAYS days (workflow default 28), sooner when an
+// agency rate card in data/agency/ changed, or always with MARKET_FORCE=1 (manual run «force_market»)
+const AGENCY_HASH = (() => { try { const h = createHash('sha1'); for (const f of readdirSync('data/agency').filter(f => f.endsWith('.json')).sort()) h.update(f + readFileSync(`data/agency/${f}`)); return h.digest('hex').slice(0, 12); } catch { return ''; } })();
+{
+  const every = +(process.env.MARKET_EVERY_DAYS || 0);
+  let cur = null; try { cur = JSON.parse(readFileSync(`${DIR}/market.json`, 'utf8')); } catch { /* first build */ }
+  const age = cur?.updatedAt ? (Date.now() - Date.parse(cur.updatedAt)) / 864e5 : Infinity;
+  if (every > 0 && process.env.MARKET_FORCE !== '1' && age < every && (cur?.source?.agencyHash || '') === AGENCY_HASH) {
+    console.log(`${SLUG}: market built ${cur.updatedAt.slice(0, 10)} (${Math.floor(age)} days ago); rebuilt every ${every} days — kept`);
+    process.exit(0);
+  }
+}
 const SRC = process.argv.slice(2).find(a => !a.startsWith('--')) || 'https://raw.githubusercontent.com/alireza-zareian/Rasamap-Repository/main/scraper/data/billboards.json';
 // other cities: the whole map frame (ring roads, entry roads and suburbs carry billboards too)
 const AREA = IS_TEHRAN ? null : cityArea(SLUG);
@@ -292,7 +305,7 @@ if (model) {
 }
 if (calib) stats.priceLevel = +calib.k.toFixed(2);
 
-const out = { updatedAt: new Date().toISOString(), source: { name: 'Rasamap (MIT)', url: 'https://github.com/alireza-zareian/Rasamap-Repository', sites: ['billboardiha.com', 'irbillboard.com', 'aradholding.com'], agencies: agencies.map(a => ({ agency: a.agency, issued: a.issued, source: a.source })), calibration: calib }, stats, items };
+const out = { updatedAt: new Date().toISOString(), source: { name: 'Rasamap (MIT)', url: 'https://github.com/alireza-zareian/Rasamap-Repository', sites: ['billboardiha.com', 'irbillboard.com', 'aradholding.com'], agencies: agencies.map(a => ({ agency: a.agency, issued: a.issued, source: a.source })), agencyHash: AGENCY_HASH, calibration: calib }, stats, items };
 mkdirSync(DIR, { recursive: true });
 writeFileSync(`${DIR}/market.json`, JSON.stringify(out));
 if (!existsSync(`${DIR}/price-history.csv`)) writeFileSync(`${DIR}/price-history.csv`, 'date,source,id,name,owner,price,negotiated\n');

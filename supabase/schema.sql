@@ -50,12 +50,12 @@ create table if not exists public.plans (
   updated_at     timestamptz not null default now()
 );
 insert into public.plans (id, title, months, price, compare_price, badge, features, sort) values
-  ('monthly',   'یک‌ماهه',  1,  1900000, null,     null,
+  ('monthly',   'یک‌ماهه',  1,  2000000, null,     null,
    '["همه شهرها و همه سازه‌ها","ایمپرشن، زمان و عمق مواجهه","قیمت و هزینه هر ایمپرشن","کمپین با بودجه و دستیار کمپین","هات‌اسپات‌ها و خروجی پیامک لوکیشن"]', 1),
-  ('quarterly', 'سه‌ماهه',  3,  4900000, 5700000, 'محبوب‌ترین',
-   '["همه امکانات یک‌ماهه","حدود 14٪ ارزان‌تر از ماهانه","مناسب یک فصل کمپین"]', 2),
-  ('yearly',    'یک‌ساله', 12, 15900000, 22800000, 'به‌صرفه‌ترین',
-   '["همه امکانات","حدود 30٪ ارزان‌تر از ماهانه","اولویت در درخواست شهر و قابلیت تازه"]', 3)
+  ('quarterly', 'سه‌ماهه',  3,  5000000, 6000000, 'محبوب‌ترین',
+   '["همه امکانات یک‌ماهه","ماهی حدود 1.67 میلیون تومان","مناسب یک فصل کمپین"]', 2),
+  ('yearly',    'یک‌ساله', 12, 20000000, 24000000, 'به‌صرفه‌ترین',
+   '["همه امکانات","ماهی حدود 1.67 میلیون تومان","اولویت در درخواست شهر و قابلیت تازه"]', 3)
 on conflict (id) do nothing;
 
 -- ── کد تخفیف ────────────────────────────────────────────────────────────
@@ -121,6 +121,45 @@ create table if not exists public.invites (
   used_at     timestamptz
 );
 
+-- ── دسترسی سازمانی: هر کس با ایمیل این دامنه ثبت‌نام کند (مثلاً @company.com) ──
+create table if not exists public.org_access (
+  domain      text primary key,                 -- company.com
+  days        int  not null check (days > 0),
+  kind        text not null default 'trial' check (kind in ('paid','trial','gift')),
+  note        text,
+  active      boolean not null default true,
+  until       timestamptz,                      -- بعد از این تاریخ ثبت‌نام‌های تازه دسترسی نمی‌گیرند
+  created_by  uuid references public.profiles(id),
+  created_at  timestamptz not null default now()
+);
+
+-- ── فهرست سازه‌هایی که مدیر بارگذاری می‌کند (اکسل/CSV) ─────────────────
+-- match_id = شناسه سازه‌ای از فهرست بازار که همین است (قیمت و مشخصاتش جایگزین می‌شود)؛ خالی = سازه تازه
+create table if not exists public.custom_structures (
+  id          uuid primary key default gen_random_uuid(),
+  city        text not null default 'tehran',
+  name        text not null,
+  address     text,
+  lat         double precision,
+  lng         double precision,
+  loc         text,                 -- exact | geocoded | matched
+  type        text,                 -- bulletin | bridge | poster | digital | rooftop
+  dir         text,
+  w           real,
+  h           real,
+  price       bigint,               -- اجاره ماهانه (تومان)
+  owner       text,
+  code        text,
+  note        text,
+  match_id    text,
+  active      boolean not null default true,
+  batch       text,                 -- نام فایل و تاریخ بارگذاری
+  created_by  uuid references public.profiles(id),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists custom_structures_city on public.custom_structures(city);
+
 -- ══════════════════════════════════════════════════════════════════════
 -- توابع
 -- ══════════════════════════════════════════════════════════════════════
@@ -151,6 +190,10 @@ begin
   select new.id, i.plan_id, i.kind, 'admin', now(), now() + make_interval(days => i.days), i.created_by, coalesce(i.note, 'دعوت')
   from invites i where i.email = lower(new.email) and i.used_at is null;
   update invites set used_at = now() where email = lower(new.email) and used_at is null;
+  -- دسترسی سازمانی (دامنه ایمیل)
+  insert into subscriptions (user_id, kind, source, starts_at, ends_at, granted_by, note)
+  select new.id, o.kind, 'admin', now(), now() + make_interval(days => o.days), o.created_by, coalesce(o.note, 'دسترسی سازمانی ' || o.domain)
+  from org_access o where o.domain = split_part(lower(new.email), '@', 2) and o.active and (o.until is null or o.until > now());
   return new;
 end $$;
 drop trigger if exists on_auth_user_created on auth.users;
@@ -278,6 +321,27 @@ begin
   return jsonb_build_object('ok', true, 'invited', true);
 end $$;
 
+-- دسترسی سازمانی: ثبت دامنه، و در صورت انتخاب، دادن همان دسترسی به عضوهای فعلی آن دامنه که دسترسی فعال ندارند
+create or replace function public.admin_grant_domain(p_domain text, p_days int, p_kind text default 'trial', p_note text default null,
+  p_existing boolean default true, p_until timestamptz default null)
+returns jsonb language plpgsql security definer set search_path = public as $$
+declare d text := lower(trim(both '@ ' from p_domain)); n int := 0; r record;
+begin
+  if not is_admin() then raise exception 'فقط مدیر'; end if;
+  if d !~ '^[a-z0-9.-]+\.[a-z]{2,}$' then raise exception 'دامنه معتبر نیست'; end if;
+  if d in ('gmail.com','googlemail.com','yahoo.com','hotmail.com','outlook.com','live.com','icloud.com','me.com','proton.me','protonmail.com','yandex.com','mail.ru','aol.com','chmail.ir','gmx.com')
+    then raise exception 'دامنه ایمیل عمومی است؛ برای این‌ها ایمیل‌ها را تک‌تک وارد کنید'; end if;
+  insert into org_access (domain, days, kind, note, active, until, created_by) values (d, p_days, p_kind, p_note, true, p_until, auth.uid())
+  on conflict (domain) do update set days = excluded.days, kind = excluded.kind, note = excluded.note, active = true, until = excluded.until, created_at = now();
+  if p_existing then
+    for r in select p.id from profiles p where split_part(p.email, '@', 2) = d and not p.blocked
+      and not exists (select 1 from subscriptions s where s.user_id = p.id and s.status = 'active' and s.ends_at > now()) loop
+      perform admin_grant(r.id, p_days, p_kind, null, coalesce(p_note, 'دسترسی سازمانی ' || d)); n := n + 1;
+    end loop;
+  end if;
+  return jsonb_build_object('ok', true, 'domain', d, 'existing', n);
+end $$;
+
 -- گرفتن دسترسی: همه اشتراک‌های فعال لغو می‌شوند
 create or replace function public.admin_revoke(p_user uuid, p_note text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -317,6 +381,14 @@ alter table public.discount_codes enable row level security;
 alter table public.subscriptions  enable row level security;
 alter table public.payments       enable row level security;
 alter table public.invites        enable row level security;
+alter table public.org_access     enable row level security;
+alter table public.custom_structures enable row level security;
+drop policy if exists "cs read" on public.custom_structures;
+drop policy if exists "cs admin" on public.custom_structures;
+create policy "cs read"  on public.custom_structures for select using (auth.uid() is not null and active);
+create policy "cs admin" on public.custom_structures for all using (is_admin()) with check (is_admin());
+drop policy if exists "org admin" on public.org_access;
+create policy "org admin" on public.org_access for all using (is_admin()) with check (is_admin());
 drop policy if exists "invites admin" on public.invites;
 create policy "invites admin" on public.invites for all using (is_admin()) with check (is_admin());
 
@@ -357,6 +429,6 @@ language sql security definer set search_path = public as $$
 $$;
 
 grant execute on function public.my_access, public.touch_last_seen, public.quote, public.request_subscription,
-  public.update_my_profile, public.activate_payment, public.admin_grant, public.admin_grant_email, public.admin_revoke, public.admin_users, public.is_admin
+  public.update_my_profile, public.activate_payment, public.admin_grant, public.admin_grant_email, public.admin_grant_domain, public.admin_revoke, public.admin_users, public.is_admin
   to authenticated;
 grant execute on function public.quote to anon;

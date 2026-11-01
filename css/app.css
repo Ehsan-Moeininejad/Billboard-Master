@@ -1025,9 +1025,9 @@ details.how[open] > summary { margin-bottom: 8px; }
 
 /* ── side panel: hide / show, resize ─────────────── */
 html.panel-off { --panel-w: 0px; }
-.panel-tab { position: fixed; z-index: 610; top: 50%; right: calc(var(--panel-w) + 16px); transform: translateY(-50%); width: 22px; height: 64px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px; color: var(--text-2); box-shadow: -4px 0 14px rgba(0,0,0,.25); transition: right .28s var(--ease), background .15s; }
+.panel-tab { position: fixed; z-index: 610; top: 50%; right: calc(var(--panel-w) + 16px); transform: translateY(-50%); width: 26px; height: 88px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); border-right: 0; border-radius: 10px 0 0 10px; color: var(--text); box-shadow: -4px 0 14px rgba(0,0,0,.35); border-color: var(--line-2); transition: right .28s var(--ease), background .15s; }
 .panel-tab:hover { background: var(--surface-3); color: var(--text); }
-.panel-tab svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+.panel-tab svg { width: 18px; height: 18px; transform: rotate(-90deg); }
 .panel-tab.off { right: 0; width: auto; height: 46px; padding: 0 10px 0 8px; display: flex; gap: 4px; border-radius: 12px 0 0 12px; font-size: 12.5px; font-weight: 700; color: var(--text); }
 .panel-tab.off svg { transform: rotate(90deg); }
 html.panel-off .panel { transform: translateX(calc(100% + 24px)); pointer-events: none; }
