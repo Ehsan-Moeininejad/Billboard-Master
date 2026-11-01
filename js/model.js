@@ -215,12 +215,12 @@ export function estimate(site, settings, dayType = 'weekday') {
   };
 }
 
-/** Score 0–100: reach (log scale) 70% + dwell 30%. */
+/** Visibility score 0–100 (no price): reach (log scale) 85% + dwell 15%. */
 export function scoreFrom(daily) {
   const clamp = v => Math.max(0, Math.min(1, v));
   const sReach = clamp((Math.log10(Math.max(1, daily.impressions)) - 3.3) / (5.4 - 3.3));
   const sDwell = clamp((daily.avgExposure - 3) / 14);
-  return Math.round(100 * (0.7 * sReach + 0.3 * sDwell));
+  return Math.round(100 * (0.85 * sReach + 0.15 * sDwell));
 }
 
 /** Full summary: weekday detail + weekly/monthly totals, CPM and score. */

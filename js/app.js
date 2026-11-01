@@ -6,6 +6,7 @@ import { approximateDistricts, districtOf, DISTRICT_CENTERS, pointInPoly } from 
 import { evalSite, buildOptions, optimize, budgetCurve, OBJECTIVES } from './planner.js';
 import { loadInventory, saveInventory, parseTable, TYPE_FA, SOURCE_FA } from './inventory.js';
 import { smsText, circleRing, SMS_POINT_RADIUS } from './geofence.js';
+import { parseQuery, matches as queryMatches, nameHits, roadHits, normFa } from './search-local.js';
 import { mergeMarket, applyValue, valueLabel, LOC_FA, daysSince } from './market.js';
 import { monthTable, startOptions, campaignFactors, persianMonth } from './calendar.js';
 import { state, load, save, emit, subscribe, nextColor, uid, shareUrl } from './store.js';
@@ -148,7 +149,7 @@ function setupDemo() {
 function fitSites() {
   if (!state.sites.length) return;
   const b = L.latLngBounds(state.sites.map(s => [s.lat, s.lng]));
-  map.fitBounds(b.pad(0.3), { maxZoom: 15, paddingTopLeft: [60, 80], paddingBottomRight: isMobile() ? [20, innerHeight * 0.45] : [440, 40] });
+  map.fitBounds(b.pad(0.3), { maxZoom: 15, paddingTopLeft: [60, 80], paddingBottomRight: isMobile() ? [20, innerHeight * 0.45] : [panelW() + 32, 40] });
 }
 
 function setBasemap(key) {
@@ -886,6 +887,7 @@ function onPanelClick(e) {
     case 'sc-dist': { map.closePopup(); const n = +t.dataset.v, S = state.scope; selectDistricts(S.districts.includes(n) ? S.districts.filter(x => x !== n) : [...S.districts, n]); break; }
     case 'sc-clear': e.preventDefault(); state.scope.districts = []; state.scope.mode = 'district'; highlightDistricts(); renderPanel(); rerank(); break;
     case 'sc-sort': state.scope.sort = t.dataset.v; rerank(); break;
+    case 'sc-q-clear': state.scope.query = null; state.invFilter = 'all'; $('#search').value = ''; $('#searchClear').hidden = true; renderPanel(); rerank(); break;
     case 'sc-plan': state.plan.districts = [...state.scope.districts]; state.plan.excludes = {}; openPlanner('plan'); break;
     case 'sc-board': state.board.districts = [...state.scope.districts]; openPlanner('board'); break;
     case 'inv-import': openImport(); break;
@@ -1274,7 +1276,7 @@ let refreshTimer = null;
 /** The part of the map not covered by the side panel. */
 function visibleBounds() {
   const size = map.getSize();
-  const right = isMobile() ? size.x : Math.max(200, size.x - ($('#panel').offsetWidth + 32));
+  const right = isMobile() ? size.x : Math.max(200, size.x - (panelW() + 32));
   const bottom = isMobile() ? Math.max(200, size.y - $('#panel').offsetHeight) : size.y;
   return L.latLngBounds(map.containerPointToLatLng([60, 70]), map.containerPointToLatLng([right, bottom]));
 }
@@ -1389,6 +1391,7 @@ async function rankView() {
     return { ...e, monthly, cpm: monthly ? monthly / (e.ev.weeklyImp * 30 / 7 / 1000) : null };
   });
   if (S.mode === 'district' && S.districts.length) list = list.filter(e => S.districts.includes(e.district));
+  if (S.query) list = list.filter(e => queryMatches(e, S.query));
   let extra = [];
   if (S.mode === 'view') {
     const b = visibleBounds();
@@ -1421,7 +1424,7 @@ async function selectDistricts(ns, { fit = true } = {}) {
     await setDistrictLayer(true);
     const ds = state.districts.filter(d => ns.includes(d.n));
     const pts = ds.flatMap(d => (d.rings || [d.poly]).flat());
-    if (fit && pts.length) map.fitBounds(L.latLngBounds(pts), { maxZoom: 14, paddingTopLeft: [60, 70], paddingBottomRight: isMobile() ? [0, 220] : [$('#panel').offsetWidth + 40, 20] });
+    if (fit && pts.length) map.fitBounds(L.latLngBounds(pts), { maxZoom: 14, paddingTopLeft: [60, 70], paddingBottomRight: isMobile() ? [0, 220] : [panelW() + 40, 20] });
   }
   renderPanel();
   rerank();
@@ -1454,7 +1457,7 @@ function drawStructures() {
   invLayer.clearLayers();
   const z = map.getZoom();
   const showOsm = z >= 14 || DEMO;
-  const scoped = state.listTab === 'inventory' && state.scope.mode !== 'city';
+  const scoped = state.listTab === 'inventory' && (state.scope.mode !== 'city' || !!state.scope.query);
   const scoreOf = new Map((state.plan.entries || []).map(e => [e.id, e.score]));
   const tierOf = sc => sc == null ? '' : sc >= 70 ? 't1' : sc >= 50 ? 't2' : 't3';
   // zoomed out: light dots coloured by score, so 400+ structures stay readable; top 10 of the ranking get numbers
@@ -1644,6 +1647,7 @@ function inventoryHTML() {
         <button class="${S.mode === 'view' ? 'on' : ''}" data-act="sc-mode" data-v="view">محدوده نقشه</button>
       </div>
       ${S.mode === 'district' ? distPickerHTML() : ''}
+      ${S.query ? `<div class="q-chip">${icon('search')}<span>جستجو: <b>${esc(S.query.label || S.query.raw)}</b>${rk.status === 'ready' ? ` · ${num(list.length)} سازه` : ''}</span><button data-act="sc-q-clear" aria-label="پاک کردن جستجو">${icon('close')}</button></div>` : ''}
       <div class="sort-row"><span class="field-l">مرتب‌سازی</span><div class="seg seg-sm">${Object.entries(SCOPE_SORT).map(([k, [l]]) => `<button class="${S.sort === k ? 'on' : ''}" data-act="sc-sort" data-v="${k}">${l}</button>`).join('')}</div></div>
       <div class="seg seg-sm">${types.map(t => `<button class="${f === t ? 'on' : ''}" data-act="inv-filter" data-v="${t}">${t === 'all' ? 'همه' : TYPE_FA[t]}</button>`).join('')}</div>
       ${status ? `<div class="inv-status">${status}</div>` : ''}
@@ -1739,7 +1743,7 @@ async function runFinder() {
   };
   state.finder.status = 'done';
   drawFinder(); renderPanel();
-  if (inDistricts) { map.closePopup(); map.fitBounds(b, { maxZoom: 14, paddingTopLeft: [60, 70], paddingBottomRight: isMobile() ? [0, 220] : [$('#panel').offsetWidth + 40, 20] }); }
+  if (inDistricts) { map.closePopup(); map.fitBounds(b, { maxZoom: 14, paddingTopLeft: [60, 70], paddingBottomRight: isMobile() ? [0, 220] : [panelW() + 40, 20] }); }
 }
 
 function drawFinder() {
@@ -1865,6 +1869,7 @@ async function evaluateMarketNow(force = false) {
     address: r.address, site: byId.get(r.id)?.site, roadGuessed: r.roadGuessed, approx: locApprox(r),
     road: r.road, roadKey: `${r.road}|${r.facing}`, score: r.score, sight: r.sight, clutter: r.clutter,
     district: districtOf(r.lat, r.lng, ds), ev: evalSite(r.vsite, state.settings), src: 'inv',
+    code: byId.get(r.id)?.code, dir: byId.get(r.id)?.dir || '', bearings: r.vsite ? directionsFor(r.vsite).facing.map(d => d.bearing) : [],
   }));
   if (P.includeSites) state.sites.filter(s => isReady(s)).forEach(s => {
     const sum = summarize(s, state.settings);
@@ -2430,7 +2435,7 @@ async function onBoardClick(t, e) {
     const pts = (P.entries || []).filter(e => ids.has(e.id)).map(e => [e.lat, e.lng]).filter(p => p[0]);
     $('#sheet').hidden = true; state.sheet = null;
     setStructuresLayer(true); if (a === 'bd-dmap') setDistrictLayer(true);
-    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15, paddingBottomRight: isMobile() ? [0, 0] : [440, 0] });
+    if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15, paddingBottomRight: isMobile() ? [0, 0] : [panelW() + 32, 0] });
     return true;
   }
   return false;
@@ -2451,27 +2456,84 @@ function onBoardChange(t) {
 //  search
 // ════════════════════════════════════════════════════════════
 let searchTimer = null, searchSeq = 0, searchItems = [], searchActive = -1;
+// search: the site's own structures, roads and districts first (understands «بیلبوردهای همت شرق به غرب»),
+// then places from the map providers
+function localSearch(q) {
+  const pool = (state.plan.entries || []).filter(e => e.src === 'inv');
+  const base = pool.length ? pool : state.inventory;
+  const owners = [...new Set(base.map(e => e.owner).filter(Boolean))];
+  const pq = parseQuery(q, { owners });
+  const out = [];
+  if (pq.road || pq.structural) {
+    const hits = base.filter(e => queryMatches(e, pq));
+    if (hits.length) out.push({ kind: 'filter', title: `${num(hits.length)} سازه · ${pq.label}`, sub: 'نمایش روی نقشه و در فهرست رتبه‌بندی', q: pq });
+    else if (pq.dir != null && pq.road) {
+      const q2 = { ...pq, dir: null, dirFa: null, label: pq.labels.filter(l => l !== pq.dirFa).join(' · ') };
+      const any = base.filter(e => queryMatches(e, q2));
+      if (any.length) out.push({ kind: 'filter', title: `${num(any.length)} سازه · ${q2.label}`, sub: `سازه‌ای رو به «${pq.dirFa}» پیدا نشد؛ همه جهت‌ها`, q: q2 });
+    }
+    if (!pool.length && !hits.length && (pq.dir != null || pq.district)) out.push({ kind: 'wait', title: 'سازه‌ها هنوز در حال سنجش‌اند…', sub: 'چند ثانیه دیگر دوباره بنویسید' });
+  }
+  if (pq.district && distNums().includes(pq.district)) out.push({ kind: 'district', n: pq.district, title: `منطقه ${pq.district}${distFa(pq.district) ? ` — ${distFa(pq.district)}` : ''}`, sub: 'مرز منطقه و رتبه‌بندی سازه‌هایش' });
+  nameHits(base, q, 5).forEach(e => out.push({ kind: 'struct', id: e.id, lat: e.lat, lng: e.lng, title: e.name,
+    sub: [TYPE_FA[e.type], e.road, e.district ? `منطقه ${e.district}` : '', e.owner, e.dir].filter(Boolean).join(' · ') }));
+  if (pq.road && !pq.structural) roadHits([...roadCache.ways.values()], pq.road, 3).forEach(g => out.push({ kind: 'road', title: g.name, sub: `مسیر روی نقشه · ${ROAD_CLASSES[g.cls]?.short || ''}`, pts: g.pts }));
+  return { items: out.slice(0, 9), pq };
+}
+
+function applySearchFilter(q) {
+  const S = state.scope;
+  S.query = q;
+  S.districts = q.district ? [q.district] : [];
+  S.mode = q.district && CITY.districts ? 'district' : 'city';
+  if (q.sort) S.sort = q.sort;
+  state.invFilter = q.type || 'all';
+  state.listTab = 'inventory'; state.selectedId = null;
+  expandPanel();
+  setStructuresLayer(true);
+  if (q.district && CITY.districts) setDistrictLayer(true);
+  renderPanel(); rerank();
+  const hits = (state.plan.entries || []).filter(e => e.src === 'inv' && queryMatches(e, q));
+  if (hits.length) map.fitBounds(L.latLngBounds(hits.map(e => [e.lat, e.lng])).pad(0.15), { maxZoom: 15, paddingTopLeft: [60, 80], paddingBottomRight: isMobile() ? [0, innerHeight * 0.45] : [panelW() + 40, 20] });
+}
+
 function bindSearch() {
   const inp = $('#search'), box = $('#searchResults'), clr = $('#searchClear');
   const SRC = { neshan: 'نشان', mapir: 'Map.ir', osm: 'OpenStreetMap' };
-  const show = (items, src) => {
-    searchItems = items; searchActive = -1;
+  const IC = { filter: 'board', struct: 'board', district: 'layers', road: 'search', wait: 'refresh' };
+  const head = t => `<div class="sr-head">${t}</div>`;
+  const row = (it, i) => `<button class="sr-item ${it.kind === 'filter' ? 'sr-main' : ''}" data-i="${i}" role="option">${icon(IC[it.kind] || (it.coord ? 'target' : 'search'))}<span><b>${esc(it.title)}</b><small>${esc(it.sub || '')}</small></span></button>`;
+  let local = [], remote = [], remoteSrc = '', pending = false;
+  const draw = () => {
+    searchItems = [...local, ...remote]; searchActive = searchItems.length ? 0 : -1;
     box.hidden = false;
-    box.innerHTML = (items.length ? items.map((it, i) => `<button class="sr-item" data-i="${i}" role="option">${icon(it.coord ? 'target' : 'search')}<span><b>${esc(it.title)}</b><small>${esc(it.sub || '')}</small></span></button>`).join('')
-      : `<div class="sr-empty">نتیجه‌ای در ${CITY.fa} پیدا نشد</div>`) + (src ? `<div class="sr-src">نتایج از ${SRC[src] || src}</div>` : '');
+    let html = '';
+    if (local.length) html += head('در بیلبوردسنج') + local.map((it, i) => row(it, i)).join('');
+    if (remote.length) html += head(`مکان‌ها${remoteSrc ? ` · ${SRC[remoteSrc] || remoteSrc}` : ''}`) + remote.map((it, i) => row(it, local.length + i)).join('');
+    if (pending) html += '<div class="sr-empty">در حال جستجوی مکان‌ها…</div>';
+    if (!html) html = `<div class="sr-empty">نتیجه‌ای در ${CITY.fa} پیدا نشد</div>`;
+    html += '<div class="sr-src">مثال: «بیلبوردهای همت شرق به غرب»، «پل عابرهای منطقه 3»، «ارزان‌ترین سازه‌های مدرس»</div>';
+    box.innerHTML = html;
+    box.querySelector('.sr-item')?.classList.add('active');
   };
+  inp.addEventListener('focus', () => { evaluateMarket(); if (inp.value.trim().length >= 2 && searchItems.length) box.hidden = false; });
   inp.addEventListener('input', () => {
     const q = inp.value.trim();
     clr.hidden = !q;
     clearTimeout(searchTimer);
     if (q.length < 2) { box.hidden = true; return; }
-    const m = q.replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d)).match(/^\s*(-?\d+(?:\.\d+)?)\s*[,،\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
-    if (m) { show([{ title: 'رفتن به مختصات', sub: `${m[1]}, ${m[2]}`, lat: +m[1], lng: +m[2], coord: true }]); return; }
-    box.hidden = false; box.innerHTML = '<div class="sr-empty">در حال جستجو…</div>';
+    const m = normFa(q).match(/^\s*(-?\d+(?:\.\d+)?)\s*[,،\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) { local = [{ title: 'رفتن به مختصات', sub: `${m[1]}, ${m[2]}`, lat: +m[1], lng: +m[2], coord: true }]; remote = []; pending = false; draw(); return; }
+    const L0 = localSearch(q);
+    local = L0.items; remote = [];
+    const wantRemote = !L0.pq.structural || !local.length;
+    pending = wantRemote; draw();
+    if (!wantRemote) return;
     const seq = ++searchSeq;
     searchTimer = setTimeout(async () => {
-      try { const r = await providers.search(q, state.settings); if (seq === searchSeq) show(r.items, r.provider); }
-      catch { if (seq === searchSeq) box.innerHTML = '<div class="sr-empty">جستجو در دسترس نیست — اتصال اینترنت را بررسی کنید</div>'; }
+      try { const r = await providers.search(q, state.settings); if (seq !== searchSeq) return; remote = r.items || []; remoteSrc = r.provider; }
+      catch { if (seq !== searchSeq) return; remote = []; }
+      pending = false; draw();
     }, 380);
   });
   inp.addEventListener('keydown', e => {
@@ -2484,17 +2546,91 @@ function bindSearch() {
     else if (e.key === 'Escape') box.hidden = true;
   });
   box.addEventListener('click', e => { const b = e.target.closest('.sr-item'); if (b) goTo(searchItems[+b.dataset.i]); });
-  clr.addEventListener('click', () => { inp.value = ''; clr.hidden = true; box.hidden = true; if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; } inp.focus(); });
+  clr.addEventListener('click', () => {
+    inp.value = ''; clr.hidden = true; box.hidden = true; searchItems = [];
+    if (searchMarker) { map.removeLayer(searchMarker); searchMarker = null; }
+    if (state.scope.query) { state.scope.query = null; state.invFilter = 'all'; renderPanel(); rerank(); }
+    inp.focus();
+  });
   document.addEventListener('click', e => { if (!e.target.closest('.search')) box.hidden = true; });
 }
 function goTo(it) {
   if (!it) return;
   $('#searchResults').hidden = true;
+  if (it.kind === 'wait') return;
+  if (it.kind === 'filter') { applySearchFilter(it.q); $('#search').blur(); return; }
+  if (it.kind === 'district') { state.scope.query = null; selectDistricts([it.n]); expandPanel(); return; }
+  if (it.kind === 'struct') { $('#search').value = it.title; focusStructure(it.id); return; }
+  if (it.kind === 'road') { $('#search').value = it.title; map.fitBounds(L.latLngBounds(it.pts).pad(0.1), { maxZoom: 15, paddingTopLeft: [60, 80], paddingBottomRight: isMobile() ? [0, innerHeight * 0.45] : [panelW() + 40, 20] }); return; }
   $('#search').value = it.title;
   if (searchMarker) map.removeLayer(searchMarker);
   searchMarker = L.marker([it.lat, it.lng], { icon: L.divIcon({ className: '', html: '<div class="search-pin"></div>', iconSize: [22, 22] }) }).addTo(map);
   searchMarker.bindPopup(`<b>${esc(it.title)}</b><div style="color:var(--muted);font-size:12px;margin:2px 0 10px">${esc(it.sub || '')}</div><button class="btn btn-primary btn-block" data-act="analyze-struct" data-lat="${it.lat}" data-lng="${it.lng}" data-kind="" data-name="">${icon('target')} تحلیل این نقطه</button>`).openPopup();
   map.flyTo([it.lat, it.lng], 16, { duration: 0.8 });
+}
+
+// ── side panel: hide / show and resize (desktop); on phones the bottom sheet grows and shrinks ──
+const PANEL_KEY = 'billboard-insight:panel';
+const panelOff = () => document.documentElement.classList.contains('panel-off');
+function panelW() { return isMobile() || panelOff() ? 0 : $('#panel').offsetWidth; }
+function savePanelPref(o) { try { localStorage.setItem(PANEL_KEY, JSON.stringify({ ...JSON.parse(localStorage.getItem(PANEL_KEY) || '{}'), ...o })); } catch { /* private mode */ } }
+function collapsePanel() {
+  if (isMobile()) { setPanelSize('mini'); return; }
+  document.documentElement.classList.add('panel-off'); savePanelPref({ off: true }); panelTabState();
+}
+function expandPanel() {
+  if (isMobile()) { if ($('#panel').classList.contains('mini')) setPanelSize(''); return; }
+  if (!panelOff()) return;
+  document.documentElement.classList.remove('panel-off'); savePanelPref({ off: false }); panelTabState();
+}
+function panelTabState() {
+  const off = panelOff(), b = $('#panelTab');
+  if (!b) return;
+  b.classList.toggle('off', off);
+  b.setAttribute('aria-label', off ? 'باز کردن پنل' : 'بستن پنل');
+  b.title = off ? 'باز کردن پنل' : 'بستن پنل (کشیدن لبه پنل = تغییر اندازه)';
+  b.innerHTML = off ? `${icon('chev')}<span>پنل</span>` : icon('chev');
+}
+function initPanelControls() {
+  const panel = $('#panel'), root = document.documentElement;
+  let pref = {}; try { pref = JSON.parse(localStorage.getItem(PANEL_KEY) || '{}'); } catch { /* none */ }
+  const maxW = () => Math.max(320, Math.min(760, innerWidth - 420));
+  const setW = w => { const v = Math.round(Math.max(320, Math.min(maxW(), w))); root.style.setProperty('--panel-real', `${v}px`); return v; };
+  if (pref.w) setW(pref.w);
+  if (pref.off && !isMobile()) root.classList.add('panel-off');
+  // the tab on the panel's edge
+  const tab = document.createElement('button');
+  tab.id = 'panelTab'; tab.className = 'panel-tab'; tab.type = 'button';
+  tab.addEventListener('click', () => (panelOff() ? expandPanel() : collapsePanel()));
+  document.body.append(tab);
+  panelTabState();
+  // drag the panel's inner edge to resize; double-click resets
+  const h = document.createElement('div');
+  h.className = 'panel-resize'; h.title = 'برای تغییر اندازه بکشید · دوبار کلیک: اندازه پیش‌فرض';
+  panel.append(h);
+  h.addEventListener('pointerdown', e => {
+    e.preventDefault(); h.setPointerCapture(e.pointerId); root.classList.add('panel-resizing');
+    const mv = ev => setW(innerWidth - ev.clientX - 16);
+    const up = ev => { h.removeEventListener('pointermove', mv); h.removeEventListener('pointerup', up); root.classList.remove('panel-resizing'); savePanelPref({ w: setW(innerWidth - ev.clientX - 16) }); };
+    h.addEventListener('pointermove', mv); h.addEventListener('pointerup', up);
+  });
+  h.addEventListener('dblclick', () => { root.style.removeProperty('--panel-real'); savePanelPref({ w: null }); });
+  // phones: drag the grip up / down
+  const grip = $('#panelGrip');
+  let y0 = null;
+  grip.addEventListener('pointerdown', e => { y0 = e.clientY; });
+  grip.addEventListener('pointerup', e => {
+    if (y0 == null) return;
+    const dy = e.clientY - y0; y0 = null;
+    if (Math.abs(dy) < 12) return; // a tap: the click handler cycles the sizes
+    grip.dataset.dragged = '1';
+    const p = $('#panel');
+    if (dy < 0) setPanelSize(p.classList.contains('mini') ? '' : 'tall');
+    else setPanelSize(p.classList.contains('tall') ? '' : 'mini');
+  });
+  document.addEventListener('keydown', e => {
+    if ((e.key === '\\' || e.code === 'Backslash') && (e.metaKey || e.ctrlKey)) { e.preventDefault(); panelOff() ? expandPanel() : collapsePanel(); }
+  });
 }
 
 // ════════════════════════════════════════════════════════════
@@ -2829,7 +2965,8 @@ function bindChrome() {
   });
 
   // mobile bottom-sheet grip
-  $('#panelGrip').addEventListener('click', () => {
+  $('#panelGrip').addEventListener('click', e => {
+    if (e.currentTarget.dataset.dragged) { delete e.currentTarget.dataset.dragged; return; }
     const p = $('#panel');
     setPanelSize(p.classList.contains('tall') ? 'mini' : p.classList.contains('mini') ? '' : 'tall');
   });
@@ -2840,6 +2977,7 @@ function bindChrome() {
     if (state.selectedId && !document.querySelector('dialog[open]')) backToList();
   });
   bindSearch();
+  initPanelControls();
   initCitySwitcher();
 }
 
