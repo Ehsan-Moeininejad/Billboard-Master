@@ -586,7 +586,7 @@ function summaryTab(site, sum, est) {
       ${ring(sum.score, scoreCol)}
       <div class="hero-txt">
         <b>${scoreLabel(sum.score)} برای دیده شدن</b>
-        <span>امتیاز ترکیبی از حجم مخاطب و زمان مواجهه</span>
+        <span>امتیاز دیده‌شدن: فقط ترافیک، ایمپرشن و زمان مواجهه، بدون قیمت. امتیاز فهرست «بهترین سازه‌ها» قیمت را هم حساب می‌کند.</span>
         <div class="conf" title="${esc(sum.sources.join(' + '))}">${[1, 2, 3, 4].map(i => `<i class="${i <= sum.confidence ? 'on' : ''}"></i>`).join('')}<small>${CONFIDENCE_FA[sum.confidence]}</small></div>
       </div>
     </div>
@@ -1409,7 +1409,7 @@ async function rankView() {
   const get = SCOPE_SORT[S.sort]?.[1] || SCOPE_SORT.score[1];
   list.sort((a, b) => get(b) - get(a));
   rankById.clear();
-  list.forEach((x, i) => rankById.set(x.id, { rank: i + 1, score: x.score, imp: x.ev.dailyImp, exp: x.ev.exp, veh: x.ev.dailyVeh, road: x.road, ranked: true }));
+  list.forEach((x, i) => rankById.set(x.id, { rank: i + 1, score: x.score, scoreParts: x.scoreParts, imp: x.ev.dailyImp, exp: x.ev.exp, veh: x.ev.dailyVeh, road: x.road, ranked: true }));
   state.ranking = { status: 'ready', list };
   highlightDistricts();
 }
@@ -1512,8 +1512,8 @@ function popCpi(st, r) {
 }
 function structPopup(st, r) {
   const pe = state.plan.entries?.find(x => x.id === st.id);
-  if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, imp: pe.ev.dailyImp, exp: pe.ev.exp, veh: pe.ev.dailyVeh };
-  const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span>امتیاز <b>${r.score}</b></span>${r.veh ? `<span><b>${compact(r.veh)}</b> خودرو/روز</span>` : ''}<span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه مواجهه</span>${popCpi(st, r)}</div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
+  if (!r?.ranked && pe) r = { ranked: true, rank: '—', score: pe.score, scoreParts: pe.scoreParts, imp: pe.ev.dailyImp, exp: pe.ev.exp, veh: pe.ev.dailyVeh };
+  const stats = r?.ranked ? `<div class="pop-stats"><span>رتبه <b>${r.rank}</b></span><span title="${esc(scoreTip(r))}">امتیاز <b>${r.score}</b></span>${r.veh ? `<span><b>${compact(r.veh)}</b> خودرو/روز</span>` : ''}<span><b>${compact(r.imp)}</b> ایمپرشن/روز</span><span><b>${num1(r.exp)}</b> ثانیه مواجهه</span>${popCpi(st, r)}</div>` : '<div class="pop-sub">این سازه به معبر اصلی نزدیک وصل نشد و رتبه ندارد</div>';
   const e = state.plan.entries?.find(x => x.id === st.id);
   const priceNote = st.priceSource === 'manual' ? '' : st.agency ? ` · ${esc(st.site || 'نرخ‌نامه آژانس')}` : st.priceEstimated ? ` · <span title="${esc(st.priceBasis || '')}${st.sourcePrice ? ` — قیمت منبع: ${toman(st.sourcePrice)}` : ''}">برآورد</span>` : '';
   const price = st.price ? `<div class="pop-price"><span>${toman(st.price)} <small>در ماه${priceNote}</small></span>${e?.valueIdx != null ? valueChip(e.valueIdx) : ''}</div>` : '';
@@ -1572,7 +1572,37 @@ function revalue() {
   const byId = new Map(state.inventory.map(x => [x.id, x]));
   P.entries.forEach(e => { const it = byId.get(e.id); if (it) { e.coef = it.coef || 1; e.price = it.price; e.negotiated = it.negotiated; e.priceEstimated = it.priceEstimated && it.priceSource !== 'manual'; e.priceUpdated = it.priceUpdated; } });
   P.bench = applyValue(P.entries, e => monthlyPrice(e, state.pricing));
+  rescore(P.entries);
 }
+
+/**
+ * Overall score 0–100 of each structure against the others in the city:
+ *   half audience  = rank of its weekly impressions (× the value coefficient) among all structures
+ *   half cost      = rank of its cost per impression among the priced ones (cheaper = higher)
+ * A structure with more impressions and a lower price always scores at least as high as the other one.
+ * No price: the cost half counts as average (50). The traffic-only score stays in e.vis.
+ */
+function rescore(entries) {
+  const rankOf = vals => {
+    const s = vals.filter(v => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+    return v => {
+      if (!s.length || !(v > 0)) return null;
+      let lo = 0, hi = s.length; while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] < v) lo = m + 1; else hi = m; }
+      let up = lo; while (up < s.length && s[up] === v) up++;
+      return s.length === 1 ? 0.5 : (lo + up - 1) / 2 / (s.length - 1);
+    };
+  };
+  const imp = e => (e.ev?.weeklyImp || 0) * (e.coef || 1);
+  const cost = e => { const m = monthlyPrice(e, state.pricing); const i = imp(e); return m && i ? m / i : null; };
+  const rImp = rankOf(entries.map(imp)), rCost = rankOf(entries.map(cost));
+  entries.forEach(e => {
+    if (e.vis == null) e.vis = e.score;
+    const a = rImp(imp(e)) ?? 0, c0 = cost(e), c = c0 != null ? 1 - rCost(c0) : null;
+    e.scoreParts = { reach: Math.round(a * 100), cost: c == null ? null : Math.round(c * 100) };
+    e.score = Math.round(100 * (0.5 * a + 0.5 * (c ?? 0.5)));
+  });
+}
+const scoreTip = x => x?.scoreParts ? `امتیاز ${x.score} = نیمی مخاطب (پربازدیدتر از ${x.scoreParts.reach}٪ سازه‌ها) + نیمی هزینه هر ایمپرشن (${x.scoreParts.cost == null ? 'قیمت ندارد؛ متوسط حساب شد' : `ارزان‌تر از ${x.scoreParts.cost}٪ سازه‌های قیمت‌دار`})` : 'امتیاز دیده‌شدن از ترافیک و زمان مواجهه';
 
 const COEF_OPTIONS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const coefSelect = (id, v = 1) => `<select class="sel sel-sm coef-sel ${v !== 1 ? 'on' : ''}" data-act="pr-coef" data-id="${id}" aria-label="ضریب ارزشمندی" title="ضریب ارزشمندی: کیفیت‌هایی که مدل نمی‌بیند (مخاطب منطقه، تناسب با برند، دید واقعی)">${COEF_OPTIONS.map(c => `<option value="${c}" ${Math.abs(c - v) < 1e-6 ? 'selected' : ''}>×${c}</option>`).join('')}</select>`;
@@ -1632,7 +1662,7 @@ function inventoryHTML() {
         <div class="card-meta">${TYPE_FA[x.type] || 'سازه'} · ${esc(x.road || '')}${x.district ? ` · منطقه ${x.district}` : ''}${x.owner ? ' · ' + esc(x.owner) : x.src === 'osm' ? ' · OSM' : ''}${x.approx ? ' · <span style="color:var(--warn)">مکان تقریبی</span>' : ''}</div>
         <div class="card-stats">${x.ev.dailyVeh ? `<span>${icon('car')} <b>${compact(x.ev.dailyVeh)}</b> خودرو</span>` : ''}<span>${icon('eye')} <b>${compact(x.ev.dailyImp)}</b>/روز</span><span><b>${num1(x.ev.exp)}</b> ثانیه</span>${x.monthly ? `<span><b>${compact(x.monthly)}</b> ماهانه</span>` : ''}${x.cpm ? `<span>هر ایمپرشن <b>${perImp(x.cpm / 1000)}</b> ت</span>` : ''}${x.valueIdx != null ? valueChip(x.valueIdx, x.approx) : ''}</div>
       </div>
-      <div class="card-side"><span class="mini-score" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${x.score}</span>
+      <div class="card-side"><span class="mini-score" title="${esc(scoreTip(x))}" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${x.score}</span>
         <button class="icon-btn" data-act="inv-analyze" data-id="${x.id}" aria-label="تحلیل کامل" title="تحلیل کامل">${icon('target')}</button></div>
     </div>`;
   }).join('');
@@ -2377,7 +2407,7 @@ function boardHTML() {
       <td>${i + 1}</td>
       <td class="nm"><b>${esc(r.name)}</b>${r.approx ? ` <span class="chip warn" title="${esc(LOC_FA[r.loc] || '')}${r.locNote ? ' — ' + esc(r.locNote) : ''}">مکان تقریبی</span>` : ''}${inPlan ? ' <span class="chip good">در کمپین</span>' : ''}${P.locks[r.id] ? ` <span class="chip warn">${icon('lock')}</span>` : ''}</td>
       <td>${r.district ?? '—'}</td><td class="rd" title="${esc(r.road || '')}">${esc(r.road || '—')}</td><td>${TYPE_FA[r.type] || '—'}</td><td>${esc(r.owner || (r.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
-      <td><span class="mini-score" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${r.score}</span></td>
+      <td><span class="mini-score" title="${esc(scoreTip(r))}" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${r.score}</span></td>
       <td>${r.ev.dailyVeh ? num(r.ev.dailyVeh) : '—'}</td><td>${num(r.ev.dailyImp)}</td><td>${num1(r.ev.exp)}</td><td>${r.ev.monthlyViewH ? num(r.ev.monthlyViewH) : '—'}</td><td>${r.sight ? num(r.sight) + ' م' : '—'}</td>
       <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td><td>${r.cpm ? perImp(r.cpm / 1000) : '—'}</td>
       <td>${valueChip(r.valueIdx, r.approx)}</td><td>${r.fair ? toman(r.fair) : '—'}</td><td>${r.src === 'inv' ? coefSelect(r.id, r.coef || 1) : '—'}</td><td>${priceAge(r.priceUpdated)}</td>
@@ -2862,7 +2892,11 @@ function openHelp() {
       <li>برای مقایسه منصفانه بین سازه‌ها، همه با یک مدل و یک فرض سرنشین سنجیده می‌شوند؛ خطای مدل در مقایسه نسبی کمتر از عدد مطلق است.</li>
     </ul>
     <h3>4. هفته، ماه و امتیاز</h3>
-    <p>ضریب روزهای هفته: ${WEEK.map(w => `${w.fa} ${w.f}`).join('، ')}. ماهانه = هفتگی × 30/7. امتیاز 0 تا 100 = 70٪ حجم ایمپرشن روزانه (مقیاس لگاریتمی) + 30٪ زمان مواجهه.</p>
+    <p>ضریب روزهای هفته: ${WEEK.map(w => `${w.fa} ${w.f}`).join('، ')}. ماهانه = هفتگی × 30/7.</p>
+    <ul>
+      <li><b>امتیاز سازه‌ها</b> (فهرست بهترین سازه‌ها، لیدربورد، رنگ نقطه‌های نقشه): مقایسه با بقیه سازه‌های همان شهر. نیمی مخاطب (جایگاه ایمپرشن هفتگی × ضریب ارزشمندی بین همه سازه‌ها) و نیمی هزینه (جایگاه هزینه هر ایمپرشن بین سازه‌های قیمت‌دار؛ ارزان‌تر = بالاتر). سازه‌ای که هم ایمپرشن بیشتری دارد و هم ارزان‌تر است، هیچ‌وقت امتیاز کمتری نمی‌گیرد. سازه بی‌قیمت در بخش هزینه «متوسط» حساب می‌شود. با نگه داشتن ماوس روی امتیاز، دو بخشش دیده می‌شود.</li>
+      <li><b>امتیاز دیده‌شدن</b> (صفحه تحلیل هر نقطه): فقط ترافیک، بدون قیمت؛ 85٪ حجم ایمپرشن روزانه (مقیاس لگاریتمی) + 15٪ زمان مواجهه.</li>
+    </ul>
     <h3>5. رتبه‌بندی سازه‌ها و جایگاه‌یابی</h3>
     <p>سازه‌های موجود (فهرست واردشده، ثبت دستی، و پل‌های عابر و تابلوهای OpenStreetMap) به نزدیک‌ترین معبر اصلی وصل و با همین مدل رتبه‌بندی می‌شوند. جایگاه‌یابی همه معابر محدوده نقشه را هر 120 متر می‌سنجد، نقاط نزدیک سازه‌های موجود را کنار می‌گذارد و بهترین‌ها را با حداقل 600 متر فاصله از هم پیشنهاد می‌دهد. این دو بخش سهمیه API مصرف نمی‌کنند؛ «تحلیل کامل» داده زنده را اضافه می‌کند.</p>
     <h3>6. هات‌اسپات‌ها</h3>

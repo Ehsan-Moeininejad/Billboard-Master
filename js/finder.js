@@ -65,11 +65,21 @@ function indexWays(ways) {
   const grid = new Map();
   ways.forEach((w, i) => {
     const seen = new Set();
-    for (const [la, lo] of w.line) {
+    const add = (la, lo) => {
       const k = `${Math.floor(la / CELL)}:${Math.floor(lo / CELL)}`;
-      if (seen.has(k)) continue; seen.add(k);
+      if (seen.has(k)) return; seen.add(k);
       if (!grid.has(k)) grid.set(k, []);
       grid.get(k).push(i);
+    };
+    // every cell a segment passes through, not only its end points: long straight highway segments
+    // (vertices 1 km apart) used to be invisible in between, and boards there snapped to a nearby ramp
+    for (let j = 0; j < w.line.length; j++) {
+      const [la, lo] = w.line[j];
+      add(la, lo);
+      if (j) {
+        const [pa, po] = w.line[j - 1], n = Math.ceil(Math.max(Math.abs(la - pa), Math.abs(lo - po)) / (CELL / 2));
+        for (let t = 1; t < n; t++) add(pa + (la - pa) * t / n, po + (lo - po) * t / n);
+      }
     }
   });
   return grid;
@@ -86,11 +96,41 @@ function nearestWay(ways, p, maxD, grid) {
   return best;
 }
 
+// which road a listed structure stands on: the nearest one, but a road named in the listing wins over a closer unnamed
+// one, and the main carriageway wins over a ramp or slip road (a board at an interchange faces the highway, not the
+// ramp) unless the listing itself says ramp / entry / exit
+const tightFa = t => String(t || '').replace(/[يى]/g, 'ی').replace(/ك/g, 'ک').replace(/[\s\u200c\-–_.,،()«»]/g, '');
+const coreName = n => tightFa(String(n || '').replace(/(بزرگراه|آزادراه|اتوبان|خیابان|بلوار|شهید|جاده|میدان)/g, ''));
+const LINK = /_link$/;
+function wayForStructure(ways, st, maxD, grid) {
+  const p = [st.lat, st.lng];
+  let cand = ways;
+  if (grid) {
+    const ci = Math.floor(p[0] / CELL), cj = Math.floor(p[1] / CELL), ids = new Set();
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) (grid.get(`${ci + a}:${cj + b}`) || []).forEach(i => ids.add(i));
+    cand = [...ids].map(i => ways[i]);
+  }
+  const txt = tightFa(`${st.name || ''} ${st.address || ''} ${st.road || ''}`);
+  const saysRamp = /رمپ|ورودی|خروجی|لوپ|دوربرگردان/.test(`${st.name || ''} ${st.address || ''}`);
+  let best = null;
+  for (const w of cand) {
+    const s = nearestOnLine(p, w.line);
+    if (s.distance > maxD) continue;
+    let cost = s.distance;
+    const nm = coreName(w.name);
+    if (nm.length >= 2 && txt.includes(nm)) cost -= 70;          // the road the listing names
+    if (LINK.test(w.cls)) cost += saysRamp ? -90 : 80;           // ramps only when the listing says so or nothing better is close
+    cost -= (ROAD_CLASSES[w.cls]?.rank || 0) * 3;                  // small tie-break toward the bigger road
+    if (!best || cost < best.cost) best = { w, d: s.distance, cost };
+  }
+  return best;
+}
+
 /** Rank structures by modelled weekday impressions. */
 export function rankStructures(structs, ways, settings) {
   const grid = indexWays(ways);
   return structs.map(st => {
-    let near = nearestWay(ways, [st.lat, st.lng], 140, grid);
+    let near = wayForStructure(ways, st, 140, grid);
     let guessed = false;
     if (!near) {
       // no mapped road nearby: assume the road named in the address, class guessed from its wording
