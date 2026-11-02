@@ -24,7 +24,8 @@ if (!CITIES[SLUG]) { console.error(`unknown city ${SLUG}`); process.exit(1); }
 const CITY = CITIES[SLUG], IS_TEHRAN = SLUG === 'tehran', DIR = cityDir(SLUG);
 // billboard listings change slowly: rebuild once every MARKET_EVERY_DAYS days (workflow default 28), sooner when an
 // agency rate card in data/agency/ changed, or always with MARKET_FORCE=1 (manual run «force_market»)
-const AGENCY_HASH = (() => { try { const h = createHash('sha1'); for (const f of readdirSync('data/agency').filter(f => f.endsWith('.json')).sort()) h.update(f + readFileSync(`data/agency/${f}`)); return h.digest('hex').slice(0, 12); } catch { return ''; } })();
+// (places.json — hand-set positions of provincial boards — is left out of Tehran's hash, so it never rebuilds Tehran)
+const AGENCY_HASH = (() => { try { const h = createHash('sha1'); for (const f of readdirSync('data/agency').filter(f => f.endsWith('.json') && !(SLUG === 'tehran' && f === 'places.json')).sort()) h.update(f + readFileSync(`data/agency/${f}`)); return h.digest('hex').slice(0, 12); } catch { return ''; } })();
 {
   const every = +(process.env.MARKET_EVERY_DAYS || 0);
   let cur = null; try { cur = JSON.parse(readFileSync(`${DIR}/market.json`, 'utf8')); } catch { /* first build */ }
@@ -240,6 +241,7 @@ async function cityGeocoder() {
   return places.length ? makeGeocoder(places, { cityName: CITY.fa, inArea: ([la, ln]) => la > BOX.s && la < BOX.n && ln > BOX.w && ln < BOX.e }) : null;
 }
 const corridorOf = text => { const r = namedRoad(text); return r ? r.key : 'street'; };
+const PLACES = (() => { try { return JSON.parse(readFileSync('data/agency/places.json', 'utf8')).places || {}; } catch { return {}; } })();
 const agencyRows = [];
 if (agencies.length) {
   let placed = 0, missed = [];
@@ -251,6 +253,10 @@ if (agencies.length) {
       let pt = null, loc = 'moved', note = '';
       const road = namedRoad(text);
       if (road) { const c = crossPoint(text, road); if (c) { pt = c.pt; note = `${road.name} × ${c.via}`; } }
+      // a position set by hand (data/agency/places.json) for addresses the road and street-name checks cannot read
+      const fixed = PLACES[`${SLUG}:${a.code}`];
+      if (fixed?.dup) continue; // the same face is in another card of this agency: shown once on the map
+      if (!pt && fixed?.lat) { pt = [fixed.lat, fixed.lng]; loc = 'address'; note = fixed.note || 'جای تقریبی از روی نشانی'; }
       if (!pt) {
         geo ||= await cityGeocoder();
         const g = geo && geo(text);
@@ -297,11 +303,21 @@ if (model) {
   const ratios = rs.filter(i => i.price).map(i => model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corOf(i) }) / i.price);
   const from = IS_TEHRAN ? agencies.map(a => `${a.agency} ${a.issued}`).join('، ') : [...new Set(regional.map(r => r.src))].join('، ') + ' (شهرستان‌ها)';
   calib = { k: median(ratios) ?? 1, from, n: model.n, rmse: +model.rmse.toFixed(2), at: new Date().toISOString(), ...(IS_TEHRAN ? {} : { level: model.corridors.includes(cityLevel()) ? cityLevel() : 'شهرهای کوچک‌تر' }) };
+  // Other cities: the old listings price bridges as a whole structure (both faces) while the rate cards quote one
+  // face, so one level for all types pushed bridges ~1.7× over the card (Mashhad 642 vs 385 million). Each type with
+  // ≥ 5 old prices gets its own level; the rest use the city level. Tehran keeps its single level.
+  const kOf = {};
+  if (!IS_TEHRAN) {
+    const by = {};
+    rs.filter(i => i.price).forEach(i => (by[i.type] ||= []).push(model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corOf(i) }) / i.price));
+    for (const [t, r] of Object.entries(by)) if (r.length >= 5) kOf[t] = median(r);
+    calib.kByType = Object.fromEntries(Object.entries(kOf).map(([t, v]) => [t, +v.toFixed(2)]));
+  }
   for (const i of rs) {
     const m = model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corOf(i) });
     const old = i.price;
     i.sourcePrice = old || null;
-    i.price = Math.round((old ? Math.exp(0.5 * Math.log(m) + 0.5 * Math.log(old * calib.k)) : m) / 1e6) * 1e6;
+    i.price = Math.round((old ? Math.exp(0.5 * Math.log(m) + 0.5 * Math.log(old * (kOf[i.type] ?? calib.k))) : m) / 1e6) * 1e6;
     i.priceEstimated = true; i.priceBasis = `برآورد با نرخ ${calib.from}`;
     // a change of basis is not a price move
     const p = prevById.get(i.id); i.prevPrice = p && p.priceBasis === i.priceBasis ? (p.price !== i.price ? p.price : p.prevPrice ?? null) : null;

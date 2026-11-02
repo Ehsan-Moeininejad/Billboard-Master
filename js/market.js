@@ -51,8 +51,11 @@ export function applyValue(entries, monthlyOf) {
     const mp = monthlyOf(e), mi = e.ev.weeklyImp * 30 / 7;
     if (mp > 0 && mi > 0 && !e.priceEstimated) pts.push({ t: e.type, x: Math.log(mi), y: Math.log(mp) });
   }
-  let fit = fitHedonic(pts);
-  // a city with no current rate card: fit on the estimates, so the index still ranks value within the city
+  // Fewer than 30 firm prices (the provincial cities: 10–14 rate-card boards, mostly bridges) is too thin a market
+  // to judge 100+ other boards against — the fit came out skewed and called most estimated boards «خرید عالی».
+  // There the fit uses every priced board (firm + estimated). Tehran (129+ rate-card boards) is unchanged.
+  let fit = pts.length >= 30 ? fitHedonic(pts) : null;
+  // a city with no (or a thin) current rate card: fit on the estimates too, so the index still ranks value within the city
   if (!fit) {
     const all = [];
     for (const e of entries) { const mp = monthlyOf(e), mi = e.ev.weeklyImp * 30 / 7; if (mp > 0 && mi > 0) all.push({ t: e.type, x: Math.log(mi), y: Math.log(mp) }); }
