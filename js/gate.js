@@ -9,7 +9,7 @@ async function run() {
   cover.innerHTML = '<div class="gate-box"><span class="gate-spin"></span><span>در حال بررسی حساب…</span></div>';
   document.body.append(cover);
   let a;
-  try { a = await access(); } catch (e) {
+  try { a = await Promise.race([access(), new Promise((_, rej) => setTimeout(() => rej(new Error('سرور حساب جواب نداد (اینترنت یا VPN را بررسی کنید)')), 15000))]); } catch (e) {
     cover.innerHTML = `<div class="gate-box"><b>اتصال به سرور حساب برقرار نشد</b><span>${esc(e.message || '')}</span><button onclick="location.reload()">تلاش دوباره</button></div>`;
     return;
   }
@@ -17,7 +17,13 @@ async function run() {
   if (!a.active) { location.replace(pageUrl('pricing.html', { reason: a.blocked ? 'blocked' : a.had_subscription ? 'expired' : 'new', next: here() })); return; }
   sb.rpc('touch_last_seen').then(() => {}, () => {});
   userChip(a);
-  await import('./app.js');
+  try { await import('./app.js'); }
+  catch (e) {
+    // a half-finished upload (one file new, another old) must not leave the page spinning forever
+    console.error(e);
+    cover.innerHTML = `<div class="gate-box"><b>بارگذاری سایت کامل نشد</b><span>${esc(e.message || String(e))}</span><span>اگر تازه فایلی آپلود کرده‌اید، مطمئن شوید همه فایل‌های همان پوشه آپلود شده و Deploy سبز شده؛ بعد Cmd+Shift+R بزنید.</span><button onclick="location.reload()">تلاش دوباره</button></div>`;
+    return;
+  }
   cover.classList.add('out'); setTimeout(() => cover.remove(), 300);
 }
 

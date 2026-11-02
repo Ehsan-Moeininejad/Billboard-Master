@@ -61,3 +61,6 @@ export function scoreLabel(s) {
   if (s >= 35) return 'متوسط';
   return 'ضعیف';
 }
+
+/** cost per second of the board being looked at: cost ÷ (impressions × their seconds), in toman */
+export const cps = (cost, seenSec) => (cost > 0 && seenSec > 0 ? cost / seenSec : null);
