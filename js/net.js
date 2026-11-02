@@ -284,7 +284,11 @@ export async function districts() {
   // prebuilt at deploy time by scripts/build-roads.mjs; live Overpass only as a fallback
   const min = CITY.minDistricts || 15;
   if (!CITY.districts) return null;
-  try { const d = await fetchJSON(dataPath('districts.json'), {}, 15000); if (Array.isArray(d) && d.length >= min) return d; } catch { /* fall back */ }
+  let file = null;
+  try { file = await fetchJSON(dataPath('districts.json'), {}, 15000); if (Array.isArray(file) && file.length >= min) return file; } catch { /* fall back */ }
+  // other cities: the weekly job builds the districts (OpenStreetMap / Neshan); a live Overpass query here took 40 s+
+  // and held the whole structure ranking back, so use what the file has, or none
+  if (!IS_TEHRAN) return Array.isArray(file) && file.length ? file : null;
   const res = await overpass(IS_TEHRAN ? OSM_DISTRICT_QUERY : districtQuery(CITY.box), 65000);
   const d = IS_TEHRAN ? parseOsmDistricts(res) : parseOsmDistricts(res, { city: CITY.fa, box: CITY.box });
   return d.length >= min ? d : null;

@@ -1904,7 +1904,8 @@ async function evaluateMarketNow(force = false) {
   const key = `${inv.map(x => x.id + x.type).join('|')}|${state.sites.map(s => s.id + (s.price || '')).join('|')}|${P.includeSites}|${state.traffic?.updatedAt || ''}`;
   if (!force && P.entries && P.evalKey === key) return;
   P.status = 'loading'; if (state.sheet === 'plan') renderPlanner();
-  const ds = await loadDistricts();
+  // districts only label the structures; never let a slow district source hold the ranking back
+  const ds = await Promise.race([loadDistricts(), new Promise(r => setTimeout(() => r(state.districts || []), 6000))]);
   if (inv.length) {
     const b = L.latLngBounds(inv.map(x => [x.lat, x.lng])).pad(0.03);
     try { await loadRoadsFor(b, PLAN_CLASSES); } catch { P.status = 'error'; return; }
