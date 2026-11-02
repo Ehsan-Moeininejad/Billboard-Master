@@ -277,14 +277,28 @@ if (agencies.length) {
 // ── today's price level for the other listings ─────────────────
 // Tehran fits it on the rate card and saves the level (k) for the other cities, which have no rate card yet.
 const CALIB = 'data/price-calibration.json';
-const model = agencyRows.length ? fitRateCard(agencyRows) : null;
+// Tehran: its own rate card only. Other cities: every rate card of the cities other than Tehran together
+// (data/agency/*-regional.json: Mashhad, Isfahan, Shiraz, Tabriz, Rasht, Karaj, towns of Mazandaran…), with the city
+// as a level of its own: Tehran rents are 10–25× the provincial ones per square metre, so its level must not leak.
+const regional = IS_TEHRAN ? [] : (() => {
+  try {
+    return readdirSync('data/agency').filter(f => f.endsWith('.json')).map(f => JSON.parse(readFileSync(`data/agency/${f}`, 'utf8')))
+      .filter(a => a.city === 'regional').flatMap(a => a.items.map(r => ({ price: r.price, m2: r.m2, type: r.type, corridor: r.label || r.cityFa || 'town', src: `${a.agency} ${a.issued}` })));
+  } catch { return []; }
+})();
+// a city without rate-card rows of its own takes the level of a comparable one (cities.js priceLike)
+const cityLevel = () => (model?.corridors.includes(CITY.fa) ? CITY.fa : CITY.priceLike || CITY.fa);
+const corOf = i => (IS_TEHRAN ? corridorOf(i.address) : cityLevel());
+const model = IS_TEHRAN ? (agencyRows.length ? fitRateCard(agencyRows) : null) : (regional.length ? fitRateCard(regional, { recenter: true }) : null);
+if (model && !IS_TEHRAN) console.log(`regional price model: n=${model.n}, error ±${Math.round((Math.exp(model.rmse) - 1) * 100)}%, ${CITY.fa} priced at the level of ${cityLevel()}`);
 let calib = null;
 if (model) {
   const rs = items.filter(i => !i.agency);
-  const ratios = rs.filter(i => i.price).map(i => model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corridorOf(i.address) }) / i.price);
-  calib = { k: median(ratios), from: agencies.map(a => `${a.agency} ${a.issued}`).join('، '), n: model.n, rmse: +model.rmse.toFixed(2), at: new Date().toISOString() };
+  const ratios = rs.filter(i => i.price).map(i => model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corOf(i) }) / i.price);
+  const from = IS_TEHRAN ? agencies.map(a => `${a.agency} ${a.issued}`).join('، ') : [...new Set(regional.map(r => r.src))].join('، ') + ' (شهرستان‌ها)';
+  calib = { k: median(ratios) ?? 1, from, n: model.n, rmse: +model.rmse.toFixed(2), at: new Date().toISOString(), ...(IS_TEHRAN ? {} : { level: model.corridors.includes(cityLevel()) ? cityLevel() : 'شهرهای کوچک‌تر' }) };
   for (const i of rs) {
-    const m = model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corridorOf(i.address) });
+    const m = model.predict({ m2: i.w && i.h ? i.w * i.h : DEFAULT_M2[i.type], type: i.type, corridor: corOf(i) });
     const old = i.price;
     i.sourcePrice = old || null;
     i.price = Math.round((old ? Math.exp(0.5 * Math.log(m) + 0.5 * Math.log(old * calib.k)) : m) / 1e6) * 1e6;

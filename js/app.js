@@ -23,7 +23,7 @@ import { PROVIDERS, anyConfigured } from './providers.js';
 import { summarize, directionsFor, tehranHour, CONFIDENCE_FA, visibility, legibleFor } from './model.js';
 import { nearestOnLine, walk, offsetLine, dist } from './geo.js';
 import { hourlyChart, multiLine, ring, heatmap, valueMap } from './charts.js';
-import { num, num1, compact, compactParts, toman, hourRange, hourLabel, esc, parseNum, scoreLabel, cpi, perImp } from './fmt.js';
+import { cps, num, num1, compact, compactParts, toman, hourRange, hourLabel, esc, parseNum, scoreLabel, cpi, perImp } from './fmt.js';
 
 // The demo build (build/demo.mjs) defines __DEMO__ = true and swaps net.js for a simulated network.
 const DEMO = typeof __DEMO__ !== 'undefined' && __DEMO__;
@@ -427,7 +427,7 @@ function listHTML() {
           <span>${icon('car')} <b>${compact(sum.wk.daily.vehicles)}</b> خودرو</span>
           <span>${icon('eye')} <b>${compact(sum.wk.daily.impressions)}</b>/روز</span>
           <span><b>${num1(sum.wk.daily.avgExposure)}</b> ثانیه</span>
-          ${sum.cpm ? `<span>CPM <b>${compact(sum.cpm)}</b></span><span>هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> ت</span>` : ''}
+          ${sum.cpm ? `<span>CPM <b>${compact(sum.cpm)}</b></span><span>هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> ت</span>${sum.monthlySeenHours ? `<span>هر ثانیه دیده‌شدن <b>${perImp(cps(s.price, sum.monthlySeenHours * 3600))}</b> ت</span>` : ''}` : ''}
         </div>
       </div>
       <div class="card-side">
@@ -603,7 +603,7 @@ function summaryTab(site, sum, est) {
       <div class="kpi"><div class="kpi-l">${icon('eye')} احتمال دیده‌شدن</div><div class="kpi-v">${Math.round(att * 100)}<small>٪</small></div><div class="kpi-s">از ${compact(d.ots)} نفر در معرض دید</div></div>
       <div class="kpi"><div class="kpi-l">${icon('speed')} میانگین سرعت</div><div class="kpi-v">${Math.round(d.avgSpeed)}<small>km/h</small></div><div class="kpi-s">سرعت آزاد <bdi dir="ltr">${Math.round(est.freeFlow)} km/h</bdi></div></div>
       <div class="kpi wide"><div><div class="kpi-l">${icon('board')} ایمپرشن ماهانه</div><div class="kpi-v">${monV}<small>${monU}</small></div></div>
-        <div style="text-align:left"><div class="kpi-l" style="justify-content:flex-end">${icon('money')} CPM</div><div class="kpi-v">${sum.cpm ? compact(sum.cpm) : '—'}<small>${sum.cpm ? 'تومان' : ''}</small></div>${sum.cpm ? `<div class="kpi-s">هزینه هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> تومان</div>` : ''}${sum.cpm ? '' : '<div class="kpi-s"><a href="#" data-act="go-price" style="color:var(--accent)">قیمت را وارد کنید</a></div>'}</div></div>
+        <div style="text-align:left"><div class="kpi-l" style="justify-content:flex-end">${icon('money')} CPM</div><div class="kpi-v">${sum.cpm ? compact(sum.cpm) : '—'}<small>${sum.cpm ? 'تومان' : ''}</small></div>${sum.cpm ? `<div class="kpi-s">هزینه هر ایمپرشن <b>${perImp(sum.cpm / 1000)}</b> تومان</div><div class="kpi-s">هر ثانیه دیده‌شدن <b>${perImp(cps(site.price, sum.monthlySeenHours * 3600))}</b> تومان</div>` : ''}${sum.cpm ? '' : '<div class="kpi-s"><a href="#" data-act="go-price" style="color:var(--accent)">قیمت را وارد کنید</a></div>'}</div></div>
     </div>
   </div>
   <div class="p-sec"><div class="sec-title"><span>بینش‌ها</span></div><ul class="insights">${ins}</ul></div>
@@ -743,6 +743,7 @@ function setupTab(site, sum, est) {
       <div class="kpi"><div class="kpi-l">هزینه کمپین</div><div class="kpi-v" style="font-size:17px">${sum.campaign.cost ? toman(sum.campaign.cost) : '—'}</div></div>
       <div class="kpi"><div class="kpi-l">CPM</div><div class="kpi-v" style="font-size:17px">${sum.cpm ? toman(sum.cpm) : '—'}</div></div>
       <div class="kpi"><div class="kpi-l">هزینه هر ایمپرشن</div><div class="kpi-v" style="font-size:17px">${sum.cpm ? `${perImp(sum.cpm / 1000)} تومان` : '—'}</div></div>
+      <div class="kpi"><div class="kpi-l">هزینه هر ثانیه دیده‌شدن</div><div class="kpi-v" style="font-size:17px">${sum.cpm ? `${perImp(cps(site.price, sum.monthlySeenHours * 3600))} تومان` : '—'}</div></div>
     </div>
   </div>
   <div class="p-sec">
@@ -1049,6 +1050,7 @@ function renderCompare() {
     ['اجاره ماهانه', r => r.s.price, v => v ? toman(v) : '—', 0],
     ['CPM (تومان)', r => r.sum.cpm, v => v ? num(v) : '—', -1],
     ['هزینه هر ایمپرشن (تومان)', r => r.sum.cpm ? r.sum.cpm / 1000 : null, v => v ? perImp(v) : '—', -1],
+    ['هزینه هر ثانیه دیده‌شدن (تومان)', r => cps(r.s.price, r.sum.monthlySeenHours * 3600), v => v ? perImp(v) : '—', -1],
     [`ایمپرشن کمپین ${state.settings.campaignWeeks} هفته‌ای`, r => r.sum.campaign.impressions, num, 1],
     ['سطح اطمینان داده', r => CONFIDENCE_FA[r.sum.confidence], v => v, 0],
   ];
@@ -1189,14 +1191,14 @@ function onSheetChange(e) {
 function tableRows() {
   const head = ['#', 'نام', 'عرض جغرافیایی', 'طول جغرافیایی', 'نوع معبر', 'نوع سازه', 'جهت دید', 'خط', 'امتیاز',
     'تردد روزانه (روز کاری)', 'افراد در معرض دید/روز', 'ایمپرشن روزانه', 'ایمپرشن هفتگی', 'ایمپرشن ماهانه',
-    'زمان مواجهه (ثانیه)', 'سرعت میانگین', 'ساعات طلایی', 'اجاره ماهانه (تومان)', 'CPM (تومان)', 'هزینه هر ایمپرشن (تومان)', 'سطح اطمینان'];
+    'زمان مواجهه (ثانیه)', 'سرعت میانگین', 'ساعات طلایی', 'اجاره ماهانه (تومان)', 'CPM (تومان)', 'هزینه هر ایمپرشن (تومان)', 'هزینه هر ثانیه دیده‌شدن (تومان)', 'سطح اطمینان'];
   const rows = state.sites.filter(isReady).map((s, i) => {
     const sum = summarize(s, state.settings); const d = sum.wk.daily;
     const dirs = directionsFor(s).facing;
     return [i + 1, s.name, s.lat.toFixed(6), s.lng.toFixed(6), ROAD_CLASSES[s.road.cls]?.fa, FORMATS[s.format]?.fa,
       s.facing === 'both' ? 'هر دو جهت' : dirs[0]?.label, dirs.map(x => x.lanes).join('+'), sum.score,
       Math.round(d.vehicles), Math.round(d.ots), Math.round(d.impressions), Math.round(sum.weekly), Math.round(sum.monthly),
-      d.avgExposure.toFixed(1), Math.round(d.avgSpeed), hourRange(d.peak), s.price || '', sum.cpm ? Math.round(sum.cpm) : '', sum.cpm ? +(sum.cpm / 1000).toFixed(1) : '', CONFIDENCE_FA[sum.confidence]];
+      d.avgExposure.toFixed(1), Math.round(d.avgSpeed), hourRange(d.peak), s.price || '', sum.cpm ? Math.round(sum.cpm) : '', sum.cpm ? +(sum.cpm / 1000).toFixed(1) : '', sum.cpm ? +cps(s.price, sum.monthlySeenHours * 3600).toFixed(1) : '', CONFIDENCE_FA[sum.confidence]];
   });
   return [head, ...rows];
 }
@@ -1383,6 +1385,7 @@ const SCOPE_SORT = {
   depth: ['عمق مواجهه', e => e.ev.monthlyViewH ?? 0],
   value: ['ارزش خرید', e => e.valueIdx ?? -1],
   cpm: ['CPM ارزان', e => -(e.cpm ?? Infinity)],
+  cps: ['ثانیه ارزان', e => -(cps(e.monthly, (e.ev.weeklyExpSec || 0) * 30 / 7) ?? Infinity)],
 };
 async function rankView() {
   const S = state.scope, P = state.plan;
@@ -1512,7 +1515,8 @@ function popCpi(st, r) {
   const mp = pe ? monthlyPrice(pe, state.pricing) : st.price;
   const mi = pe?.ev?.weeklyImp ? pe.ev.weeklyImp * 30 / 7 : r?.imp ? r.imp * WEEK.reduce((a, d) => a + d.f, 0) * 30 / 7 : null;
   const v = cpi(mp, mi);
-  return v ? `<span>هر ایمپرشن <b>${perImp(v)}</b> ت</span>` : '';
+  const ms = pe?.ev?.weeklyExpSec ? pe.ev.weeklyExpSec * 30 / 7 : null, c = cps(mp, ms);
+  return (v ? `<span>هر ایمپرشن <b>${perImp(v)}</b> ت</span>` : '') + (c ? `<span>هر ثانیه دیده‌شدن <b>${perImp(c)}</b> ت</span>` : '');
 }
 function structPopup(st, r) {
   const pe = state.plan.entries?.find(x => x.id === st.id);
@@ -1677,7 +1681,7 @@ function inventoryHTML() {
       <span class="inv-rank">${i + 1}</span>
       <div class="inv-main"><div class="card-name">${esc(x.name)}</div>
         <div class="card-meta">${TYPE_FA[x.type] || 'سازه'} · ${esc(x.road || '')}${x.district ? ` · منطقه ${x.district}` : ''}${x.owner ? ' · ' + esc(x.owner) : x.src === 'osm' ? ' · OSM' : ''}${x.approx ? ' · <span style="color:var(--warn)">مکان تقریبی</span>' : ''}</div>
-        <div class="card-stats">${x.ev.dailyVeh ? `<span>${icon('car')} <b>${compact(x.ev.dailyVeh)}</b> خودرو</span>` : ''}<span>${icon('eye')} <b>${compact(x.ev.dailyImp)}</b>/روز</span><span><b>${num1(x.ev.exp)}</b> ثانیه</span>${x.monthly ? `<span><b>${compact(x.monthly)}</b> ماهانه</span>` : ''}${x.cpm ? `<span>هر ایمپرشن <b>${perImp(x.cpm / 1000)}</b> ت</span>` : ''}${x.valueIdx != null ? valueChip(x.valueIdx, x.approx) : ''}</div>
+        <div class="card-stats">${x.ev.dailyVeh ? `<span>${icon('car')} <b>${compact(x.ev.dailyVeh)}</b> خودرو</span>` : ''}<span>${icon('eye')} <b>${compact(x.ev.dailyImp)}</b>/روز</span><span><b>${num1(x.ev.exp)}</b> ثانیه</span>${x.monthly ? `<span><b>${compact(x.monthly)}</b> ماهانه</span>` : ''}${x.cpm ? `<span>هر ایمپرشن <b>${perImp(x.cpm / 1000)}</b> ت</span>` : ''}${x.monthly && x.ev.weeklyExpSec ? `<span>هر ثانیه <b>${perImp(cps(x.monthly, x.ev.weeklyExpSec * 30 / 7))}</b> ت</span>` : ''}${x.valueIdx != null ? valueChip(x.valueIdx, x.approx) : ''}</div>
       </div>
       <div class="card-side"><span class="mini-score" title="${esc(scoreTip(x))}" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${x.score}</span>
         <button class="icon-btn" data-act="inv-analyze" data-id="${x.id}" aria-label="تحلیل کامل" title="تحلیل کامل">${icon('target')}</button></div>
@@ -2049,10 +2053,10 @@ function planHTML() {
   const kpis = `<div class="plan-kpis">
     <div class="kpi hl"><div class="kpi-l">بودجه مصرف‌شده</div><div class="kpi-v">${toman(T.cost).replace(' تومان', '')}<small>تومان</small></div><div class="usage-bar"><i style="width:${(used * 100).toFixed(1)}%"></i></div><div class="kpi-s">${Math.round(used * 100)}٪ از ${toman(P.budget)}</div></div>
     <div class="kpi"><div class="kpi-l">${icon('eye')} ایمپرشن کل</div><div class="kpi-v">${compactParts(T.imp)[0]}<small>${compactParts(T.imp)[1]}</small></div><div class="kpi-s">${compact(T.ots)} نفر در معرض دید</div></div>
-    <div class="kpi"><div class="kpi-l">${icon('clock')} زمان مواجهه کل</div><div class="kpi-v">${compactParts(T.expH)[0]}<small>${compactParts(T.expH)[1]} نفر-ساعت</small></div><div class="kpi-s">${num1(T.imp ? T.expH * 3600 / T.imp : 0)} ثانیه به ازای هر ایمپرشن</div></div>
+    <div class="kpi"><div class="kpi-l">${icon('clock')} زمان مواجهه کل</div><div class="kpi-v">${compactParts(T.expH)[0]}<small>${compactParts(T.expH)[1]} نفر-ساعت</small></div><div class="kpi-s">${num1(T.imp ? T.expH * 3600 / T.imp : 0)} ثانیه به ازای هر ایمپرشن · هر ثانیه <b>${perImp(cps(T.cost, T.expH * 3600))}</b> تومان</div></div>
     <div class="kpi"><div class="kpi-l">${icon('money')} CPM ترکیبی</div><div class="kpi-v">${T.cpm ? compact(T.cpm) : '—'}<small>${T.cpm ? 'تومان' : ''}</small></div><div class="kpi-s">هر ایمپرشن <b>${perImp(cpi(T.cost, T.imp))}</b> تومان · ${T.count} سازه روی ${T.roads} مسیر</div></div>
   </div>`;
-  const altRows = R.alt.map(({ k, r }) => `<tr class="${k === P.objective ? 'cur' : ''}"><th>${OBJECTIVES[k].fa}</th><td>${compact(r.total.imp)}</td><td>${compact(r.total.expH)}</td><td>${toman(r.total.cost)}</td><td>${r.total.count}</td><td>${r.total.cpm ? compact(r.total.cpm) : '—'}</td><td>${perImp(cpi(r.total.cost, r.total.imp))}</td><td>${k === P.objective ? '<span class="pill ok">انتخاب فعلی</span>' : `<button class="btn btn-ghost btn-sm" data-act="pl-obj" data-v="${k}">انتخاب</button>`}</td></tr>`).join('');
+  const altRows = R.alt.map(({ k, r }) => `<tr class="${k === P.objective ? 'cur' : ''}"><th>${OBJECTIVES[k].fa}</th><td>${compact(r.total.imp)}</td><td>${compact(r.total.expH)}</td><td>${toman(r.total.cost)}</td><td>${r.total.count}</td><td>${r.total.cpm ? compact(r.total.cpm) : '—'}</td><td>${perImp(cpi(r.total.cost, r.total.imp))}</td><td>${perImp(cps(r.total.cost, r.total.expH * 3600))}</td><td>${k === P.objective ? '<span class="pill ok">انتخاب فعلی</span>' : `<button class="btn btn-ghost btn-sm" data-act="pl-obj" data-v="${k}">انتخاب</button>`}</td></tr>`).join('');
   const rows = res.selected.slice().sort((a, b) => b.imp - a.imp).map(o => {
     const lock = !!P.locks[o.id];
     const fair = o.members.reduce((a, m) => a + (m.fair || 0), 0), mp = o.members.reduce((a, m) => a + (monthlyPrice(m, pr) || 0), 0);
@@ -2063,7 +2067,7 @@ function planHTML() {
       <td class="nm"><b>${esc(o.name)}</b>${o.kind === 'bundle' ? ' <span class="chip acc">باندل</span>' : ''}${members}</td>
       <td>${esc(o.owner || (o.members[0]?.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
       <td>${o.weeks} هفته${o.weeks > P.weeks ? ' <span class="chip warn">حداقل مجری</span>' : ''}</td>
-      <td>${toman(o.cost)}</td><td>${compact(o.imp)}</td><td>${num1(o.imp ? o.expH * 3600 / o.imp : 0)} ث</td><td>${compact(o.cost / (o.imp / 1000))}</td><td>${perImp(cpi(o.cost, o.imp))}</td>
+      <td>${toman(o.cost)}</td><td>${compact(o.imp)}</td><td>${num1(o.imp ? o.expH * 3600 / o.imp : 0)} ث</td><td>${compact(o.cost / (o.imp / 1000))}</td><td>${perImp(cpi(o.cost, o.imp))}</td><td>${perImp(cps(o.cost, o.expH * 3600))}</td>
       <td>${valueChip(fair && mp ? fair / mp : null)}${coefd ? ` <span class="chip acc" title="ضریب ارزشمندی دستی">×${num1(o.members[0].coef || 1)}</span>` : ''}</td>
       <td><button class="tg" data-act="pl-excl" data-id="${o.id}" title="حذف از پیشنهاد" aria-label="حذف">${icon('close')}</button></td></tr>`;
   }).join('');
@@ -2078,12 +2082,12 @@ function planHTML() {
   return `${guideHTML('plan')}<div class="plan-grid">${cfg}<main class="plan-main">
     ${kpis}${P.cal ? seasonHTML(P.cal) : ''}${warn}
     <div class="s-card"><h3>سازه‌های پیشنهادی</h3><p class="s-desc">هدف «${OBJECTIVES[P.objective].fa}» · ${P.weeks} هفته · از بین ${R.nOptions} گزینه خرید (${R.nEntries} سازه). قفل = حتماً در کمپین؛ ✕ = کنار بگذار و دوباره بچین. ضریب ارزشمندی هر سازه (لیدربورد یا تب قیمت‌ها) در هدف بهینه‌سازی ضرب می‌شود.</p>
-      ${rows ? `<div class="tbl-wrap"><table class="cmp plan-tbl"><thead><tr><th></th><th>سازه</th><th>مجری</th><th>مدت قابل پرداخت</th><th>هزینه</th><th>ایمپرشن</th><th>مواجهه</th><th>CPM</th><th>هر ایمپرشن (تومان)</th><th>ارزش خرید</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="s-desc">با این بودجه هیچ سازه‌ای قابل خرید نیست.</p>'}
+      ${rows ? `<div class="tbl-wrap"><table class="cmp plan-tbl"><thead><tr><th></th><th>سازه</th><th>مجری</th><th>مدت قابل پرداخت</th><th>هزینه</th><th>ایمپرشن</th><th>مواجهه</th><th>CPM</th><th>هر ایمپرشن (تومان)</th><th>هر ثانیه دیده‌شدن (تومان)</th><th>ارزش خرید</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<p class="s-desc">با این بودجه هیچ سازه‌ای قابل خرید نیست.</p>'}
       ${next ? `<h3 style="margin-top:16px">گزینه‌های بعدی (اگر بودجه بیشتر شود)</h3><ul class="next-list">${next}</ul>` : ''}
     </div>
     <div class="s-grid">
       <div class="s-card"><h3>اگر هدف را عوض کنید</h3><p class="s-desc">همین بودجه و محدودیت‌ها، با هر هدف</p>
-        <div class="tbl-wrap"><table class="cmp"><thead><tr><th>هدف</th><th>ایمپرشن</th><th>نفر-ساعت</th><th>هزینه</th><th>سازه</th><th>CPM</th><th>هر ایمپرشن</th><th></th></tr></thead><tbody>${altRows}</tbody></table></div></div>
+        <div class="tbl-wrap"><table class="cmp"><thead><tr><th>هدف</th><th>ایمپرشن</th><th>نفر-ساعت</th><th>هزینه</th><th>سازه</th><th>CPM</th><th>هر ایمپرشن</th><th>هر ثانیه</th><th></th></tr></thead><tbody>${altRows}</tbody></table></div></div>
       <div class="s-card"><h3>منحنی بودجه</h3><p class="s-desc">ایمپرشن قابل خرید در بودجه‌های مختلف؛ جایی که منحنی صاف می‌شود، افزایش بودجه بازده کمتری دارد.</p><div class="chart-box" id="planCurve"></div></div>
     </div>
     <p class="disclaimer">ایمپرشن و زمان مواجهه با مدل ترافیک برآورد شده‌اند. پیشنهاد با روش حریصانه و بهبود جابه‌جایی ساخته می‌شود و ممکن است با بهینه مطلق کمی فاصله داشته باشد. قیمت‌ها قیمت اعلام‌شده بازارند و قبل از قرارداد باید استعلام شوند. ${DEMO ? 'باندل نمونه و قوانین مجری‌ها در این دمو فرضی‌اند.' : ''}</p>
@@ -2208,9 +2212,9 @@ async function onPlannerClick(t, e) {
   if (a === 'pl-reset-ex') { e.preventDefault(); P.excludes = {}; replan(); return true; }
   if (a === 'pl-copy') {
     const R = P.result?.res; if (!R) return true;
-    const rows = [['سازه', 'مجری', 'نوع خرید', 'هفته', 'هزینه (تومان)', 'ایمپرشن', 'نفر-ساعت', 'CPM', 'هزینه هر ایمپرشن (تومان)'],
-      ...R.selected.map(o => [o.name, o.owner || '', o.kind === 'bundle' ? 'باندل' : 'تکی', o.weeks, Math.round(o.cost), Math.round(o.imp), Math.round(o.expH), Math.round(o.cost / (o.imp / 1000)), +(o.cost / o.imp).toFixed(1)]),
-      ['جمع کمپین', '', '', '', Math.round(R.total.cost), Math.round(R.total.imp), Math.round(R.total.expH), Math.round(R.total.cost / (R.total.imp / 1000)), +(R.total.cost / R.total.imp).toFixed(1)]];
+    const rows = [['سازه', 'مجری', 'نوع خرید', 'هفته', 'هزینه (تومان)', 'ایمپرشن', 'نفر-ساعت', 'CPM', 'هزینه هر ایمپرشن (تومان)', 'هزینه هر ثانیه دیده‌شدن (تومان)'],
+      ...R.selected.map(o => [o.name, o.owner || '', o.kind === 'bundle' ? 'باندل' : 'تکی', o.weeks, Math.round(o.cost), Math.round(o.imp), Math.round(o.expH), Math.round(o.cost / (o.imp / 1000)), +(o.cost / o.imp).toFixed(1), o.expH ? +(o.cost / (o.expH * 3600)).toFixed(1) : '']),
+      ['جمع کمپین', '', '', '', Math.round(R.total.cost), Math.round(R.total.imp), Math.round(R.total.expH), Math.round(R.total.cost / (R.total.imp / 1000)), +(R.total.cost / R.total.imp).toFixed(1), R.total.expH ? +(R.total.cost / (R.total.expH * 3600)).toFixed(1) : '']];
     copyText(rows.map(r => r.join('\t')).join('\n'), 'جدول پیشنهاد کپی شد؛ در اکسل یا گوگل‌شیت Paste کنید');
     return true;
   }
@@ -2368,7 +2372,8 @@ const BOARD_COLS = [
   ['sight', 'دید مستقیم', x => x.sight ?? 0],
   ['price', 'اجاره ماهانه', x => x.monthly ?? -1],
   ['cpm', 'CPM', x => x.cpm ?? Infinity],
-  ['cpi', 'هر ایمپرشن', x => x.cpm ?? Infinity],
+  ['cpi', 'هر ایمپرشن (ت)', x => x.cpm ?? Infinity],
+  ['cps', 'هر ثانیه دیده‌شدن (ت)', x => x.cps ?? Infinity],
   ['value', 'ارزش خرید', x => x.valueIdx ?? -1],
   ['fair', 'قیمت منصفانه', x => x.fair ?? -1],
   ['coef', 'ضریب', x => x.coef || 1],
@@ -2381,7 +2386,7 @@ function boardRows() {
   const q = B.q.trim();
   let rows = (P.entries || []).map(e => {
     const monthly = monthlyPrice(e, state.pricing);
-    return { ...e, monthly, cpm: monthly ? monthly / (e.ev.weeklyImp * 30 / 7 / 1000) : null };
+    return { ...e, monthly, cpm: monthly ? monthly / (e.ev.weeklyImp * 30 / 7 / 1000) : null, cps: cps(monthly, (e.ev.weeklyExpSec || 0) * 30 / 7) };
   });
   rows = rows.filter(r => (!B.districts.length || B.districts.includes(r.district)) && (!B.types.length || B.types.includes(r.type === 'ad' ? 'bulletin' : r.type)) &&
     (!B.owner || r.owner === B.owner) && (!B.pricedOnly || r.monthly) && (!q || r.name.includes(q) || (r.road || '').includes(q)));
@@ -2426,7 +2431,7 @@ function boardHTML() {
       <td>${r.district ?? '—'}</td><td class="rd" title="${esc(r.road || '')}">${esc(r.road || '—')}</td><td>${TYPE_FA[r.type] || '—'}</td><td>${esc(r.owner || (r.src === 'site' ? 'نقاط مقایسه' : '—'))}</td>
       <td><span class="mini-score" title="${esc(scoreTip(r))}" style="color:${col};background:color-mix(in srgb, ${col} 14%, transparent)">${r.score}</span></td>
       <td>${r.ev.dailyVeh ? num(r.ev.dailyVeh) : '—'}</td><td>${num(r.ev.dailyImp)}</td><td>${num1(r.ev.exp)}</td><td>${r.ev.monthlyViewH ? num(r.ev.monthlyViewH) : '—'}</td><td>${r.sight ? num(r.sight) + ' م' : '—'}</td>
-      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td><td>${r.cpm ? perImp(r.cpm / 1000) : '—'}</td>
+      <td>${r.monthly ? toman(r.monthly) : '—'}${r.priceEstimated ? ` <span class="chip" title="${esc(r.priceBasis || 'قیمت را خود منبع با فرمول برآورد کرده')}">برآورد</span>` : ''}</td><td>${r.cpm ? num(r.cpm) : '—'}</td><td>${r.cpm ? perImp(r.cpm / 1000) : '—'}</td><td>${r.cps ? perImp(r.cps) : '—'}</td>
       <td>${valueChip(r.valueIdx, r.approx)}</td><td>${r.fair ? toman(r.fair) : '—'}</td><td>${r.src === 'inv' ? coefSelect(r.id, r.coef || 1) : '—'}</td><td>${priceAge(r.priceUpdated)}</td>
       <td>${r.clutter || 0}</td></tr>`;
   }).join('');
@@ -2463,7 +2468,7 @@ function boardHTML() {
 async function onBoardClick(t, e) {
   const B = state.board, P = state.plan, a = t.dataset.act;
   const visible = () => boardRows().map(r => r.id);
-  if (a === 'bd-sort') { const k = t.dataset.v; if (B.sort === k) B.dir *= -1; else { B.sort = k; B.dir = ['name', 'road', 'owner', 'type', 'district', 'cpm', 'cpi', 'clutter', 'age'].includes(k) ? 1 : -1; } renderPlanner(); return true; }
+  if (a === 'bd-sort') { const k = t.dataset.v; if (B.sort === k) B.dir *= -1; else { B.sort = k; B.dir = ['name', 'road', 'owner', 'type', 'district', 'cpm', 'cpi', 'cps', 'clutter', 'age'].includes(k) ? 1 : -1; } renderPlanner(); return true; }
   if (a === 'bd-dist') { const n = +t.dataset.v; B.districts = B.districts.includes(n) ? B.districts.filter(x => x !== n) : [...B.districts, n]; renderPlanner(); return true; }
   if (a === 'bd-dclear') { B.districts = []; renderPlanner(); return true; }
   if (a === 'bd-type') { const v = t.dataset.v; B.types = B.types.includes(v) ? B.types.filter(x => x !== v) : [...B.types, v]; renderPlanner(); return true; }
@@ -2930,7 +2935,8 @@ function openHelp() {
     <h3>قیمت‌ها</h3>
     <ul>
       <li><b>نرخ‌نامه آژانس</b>: سازه‌های نرخ‌نامه (فعلاً رسش، 1405/08/03، 129 سازه در تهران) با قیمت 30 روزه همان نرخ‌نامه، کد، تاریخ آزاد شدن از رزرو و بازه «قابل اکران» می‌آیند. جای آن‌ها از روی نشانی (بزرگراه × تقاطع یا نشانه شهری) پیدا شده و «مکان تقریبی» دارند.</li>
-      <li><b>برآورد بقیه سازه‌ها</b>: قیمت آگهی‌های باز قدیمی است (روی همان بزرگراه حدود 20 تا 40 برابر کمتر از نرخ امروز). از روی نرخ‌نامه یک مدل ساخته می‌شود: قیمت بر اساس متراژ تابلو، نوع (بیلبورد، پل عابر، پل سواره، عمودی) و بزرگراه. قیمت هر سازه دیگر = نیمی از این مدل و نیمی از قیمت قدیمی خودش به سطح امروز (میانگین هندسی). این قیمت‌ها برچسب «برآورد» دارند و با نگه داشتن ماوس روی آن، مبنا و قیمت منبع دیده می‌شود. شهرهای دیگر فعلاً با همان سطح تهران × نسبت قیمت خودشان برآورد می‌شوند.</li>
+      <li><b>برآورد بقیه سازه‌ها</b>: قیمت آگهی‌های باز قدیمی است (روی همان بزرگراه حدود 20 تا 40 برابر کمتر از نرخ امروز). از روی نرخ‌نامه یک مدل ساخته می‌شود: قیمت بر اساس متراژ تابلو، نوع (بیلبورد، پل عابر، پل سواره، عمودی) و بزرگراه. قیمت هر سازه دیگر = نیمی از این مدل و نیمی از قیمت قدیمی خودش به سطح امروز (میانگین هندسی). این قیمت‌ها برچسب «برآورد» دارند و با نگه داشتن ماوس روی آن، مبنا و قیمت منبع دیده می‌شود. شهرهای دیگر از نرخ‌نامه‌های شهرستان رسش (1405/08/09: مشهد، اصفهان، شیراز، تبریز، کرج، رشت و شهرهای مازندران؛ 183 سازه) برآورد می‌شوند، نه از سطح تهران؛ اجاره هر متر مربع در تهران حدود 10 تا 25 برابر شهرستان‌هاست. هر شهر سطح قیمت خودش را دارد و شهری که سازه‌ای در نرخ‌نامه ندارد، سطح شهر مشابه را می‌گیرد (یزد و کرمان مثل تبریز، ساری و گرگان مثل مازندران). سازه‌های همین نرخ‌نامه‌ها با قیمت قطعی روی نقشه همان شهر می‌آیند.</li>
+      <li><b>هزینه هر ثانیه دیده‌شدن</b> = اجاره ماهانه ÷ (ایمپرشن ماهانه × ثانیه‌های دیده‌شدن هر کدام)، ساعت‌به‌ساعت جمع زده. ایمپرشن می‌گوید چند نفر دیدند؛ این عدد می‌گوید هر ثانیه‌ای که تابلو واقعاً دیده شده چند تومان تمام شده. برای پیام‌های طولانی‌تر و برندینگ، معیار بهتری از هزینه هر ایمپرشن است. برای کمپین = کل هزینه ÷ کل زمان دیده‌شدن.</li>
       <li><b>هزینه هر ایمپرشن</b> = اجاره ماهانه ÷ ایمپرشن ماهانه (CPM ÷ 1000). برای کمپین = کل هزینه ÷ کل ایمپرشن همه سازه‌ها در کل مدت؛ در پنجره هر سازه، فهرست‌ها، لیدربورد، کمپین با بودجه و دستیار کمپین آمده است.</li>
       <li><b>ارزش خرید</b> = قیمت منصفانه ÷ قیمت. قیمت منصفانه از برازش قیمت‌های واقعی (نرخ‌نامه) بر ایمپرشن ماهانه به دست می‌آید؛ بالای 1 یعنی این سازه برای مخاطبی که می‌آورد ارزان‌تر از بازار است.</li>
       <li>هر نرخ‌نامه تازه‌ای که از آژانس‌ها بگیرید به همین روش اضافه می‌شود و برآوردها را دقیق‌تر می‌کند.</li>

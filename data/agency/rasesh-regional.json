@@ -1,0 +1,1291 @@
+{
+"agency": "رسش",
+"source": "لیست پیشنهادی رسش شهرستان (4283) و مازندران (2079)، 1405/08/09",
+"issued": "1405/08/09",
+"issuedIso": "2026-10-31",
+"unit": "تومان، 30 روزه",
+"city": "regional",
+"items": [
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 28.0,
+"price": 665000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 50.0,
+"price": 675000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 33.0,
+"price": 675000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 58.0,
+"price": 585000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 50.0,
+"price": 435000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 62.0,
+"price": 495000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 38.0,
+"price": 405000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 38.0,
+"price": 365000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 44.0,
+"price": 525000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 62.0,
+"price": 330000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 52.0,
+"price": 595000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 47.0,
+"price": 435000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 47.0,
+"price": 385000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 111.0,
+"price": 215000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 57.0,
+"price": 335000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 44.0,
+"price": 295000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 63.0,
+"price": 205000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bridge",
+"m2": 47.0,
+"price": 285000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 108.0,
+"price": 295000000
+},
+{
+"label": "مشهد",
+"cityFa": "مشهد",
+"type": "bulletin",
+"m2": 111.0,
+"price": 220000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 52.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 32.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bulletin",
+"m2": 20.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bulletin",
+"m2": 20.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 39.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 40.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 25.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 40.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 47.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 35.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 40.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 40.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 26.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bulletin",
+"m2": 17.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 30.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 35.0,
+"price": 300000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bulletin",
+"m2": 27.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bridge",
+"m2": 32.0,
+"price": 360000000
+},
+{
+"label": "اصفهان",
+"cityFa": "اصفهان",
+"type": "bulletin",
+"m2": 34.0,
+"price": 360000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 34.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 51.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 38.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 41.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 32.0,
+"price": 413000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 52.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 44.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 47.0,
+"price": 295000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 52.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 32.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 47.0,
+"price": 283000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 32.0,
+"price": 329000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 34.0,
+"price": 329000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 19.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 19.0,
+"price": 329000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 34.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 74.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 38.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 32.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 42.0,
+"price": 341000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 47.0,
+"price": 353000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 19.0,
+"price": 283000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bulletin",
+"m2": 56.0,
+"price": 329000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 63.0,
+"price": 389000000
+},
+{
+"label": "شیراز",
+"cityFa": "شیراز",
+"type": "bridge",
+"m2": 47.0,
+"price": 329000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 448000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 43.0,
+"price": 489000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 24.0,
+"price": 376000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 89.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 58.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 31.0,
+"price": 397000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 31.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 45.0,
+"price": 438000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 45.0,
+"price": 407000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 27.0,
+"price": 407000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 407000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 27.0,
+"price": 376000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 31.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 35.0,
+"price": 366000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 137000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "poster",
+"m2": 7.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 58.0,
+"price": 149000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 58.0,
+"price": 149000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 58.0,
+"price": 149000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bulletin",
+"m2": 58.0,
+"price": 149000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 35.0,
+"price": 124000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 127.0,
+"price": 159000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 127.0,
+"price": 159000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 144.0,
+"price": 170000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 127.0,
+"price": 170000000
+},
+{
+"label": "رشت",
+"cityFa": "رشت",
+"type": "bridge",
+"m2": 97.0,
+"price": 149000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 139000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 47.0,
+"price": 195000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 47.0,
+"price": 185000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 133000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 29.0,
+"price": 133000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 38.0,
+"price": 195000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 29.0,
+"price": 132000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 127000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 127000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 42.0,
+"price": 139000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 42.0,
+"price": 139000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 143000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 120000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 145000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 143000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 132000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 139000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 132000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 29.0,
+"price": 127000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 120000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 120000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 44.0,
+"price": 132000000
+},
+{
+"label": "تبریز",
+"cityFa": "تبریز",
+"type": "bridge",
+"m2": 50.0,
+"price": 132000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 34.0,
+"price": 139000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 34.0,
+"price": 139000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 57.0,
+"price": 139000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 34.0,
+"price": 139000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 34.0,
+"price": 139000000
+},
+{
+"label": "کرج",
+"cityFa": "کرج",
+"type": "bulletin",
+"m2": 34.0,
+"price": 139000000
+},
+{
+"label": "مازندران",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 57.0,
+"price": 114000000
+},
+{
+"label": "مازندران",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 108000000
+},
+{
+"label": "مازندران",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 34.0,
+"price": 145000000
+},
+{
+"label": "مازندران",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 165000000
+},
+{
+"label": "مازندران",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 165000000
+},
+{
+"label": "رامسر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 155000000
+},
+{
+"label": "رامسر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 155000000
+},
+{
+"label": "رامسر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 50.0,
+"price": 75000000
+},
+{
+"label": "رامسر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 110.0,
+"price": 175000000
+},
+{
+"label": "تنکابن",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 63.0,
+"price": 145000000
+},
+{
+"label": "نشتارود",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 165000000
+},
+{
+"label": "عباس آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 155000000
+},
+{
+"label": "عباس آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 155000000
+},
+{
+"label": "عباس آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 135000000
+},
+{
+"label": "کالرآباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 52.0,
+"price": 185000000
+},
+{
+"label": "هچیرود",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 92.0,
+"price": 145000000
+},
+{
+"label": "هچیرود",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 78.0,
+"price": 145000000
+},
+{
+"label": "هچیرود",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 95.0,
+"price": 175000000
+},
+{
+"label": "هچیرود",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 130000000
+},
+{
+"label": "چالوس",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 60000000
+},
+{
+"label": "مرزن آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 86.0,
+"price": 95000000
+},
+{
+"label": "مرزن آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 74.0,
+"price": 95000000
+},
+{
+"label": "مرزن آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 135000000
+},
+{
+"label": "کالردشت",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "کالردشت",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "کالردشت",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "کالردشت",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "نوشهر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 95.0,
+"price": 95000000
+},
+{
+"label": "نوشهر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 34.0,
+"price": 95000000
+},
+{
+"label": "رویان",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 21.0,
+"price": 95000000
+},
+{
+"label": "ایزدشهر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 33.0,
+"price": 95000000
+},
+{
+"label": "ایزدشهر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "فریدونکنار",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 57.0,
+"price": 135000000
+},
+{
+"label": "سرخرود",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 56.0,
+"price": 135000000
+},
+{
+"label": "سرخرود",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "محمود آباد",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 47.0,
+"price": 95000000
+},
+{
+"label": "خزرشهر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 56.0,
+"price": 95000000
+},
+{
+"label": "خزرشهر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 95000000
+},
+{
+"label": "امیرکال",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 140000000
+},
+{
+"label": "بابلسر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 95000000
+},
+{
+"label": "بابلسر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 97.0,
+"price": 95000000
+},
+{
+"label": "ساری",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 34.0,
+"price": 145000000
+},
+{
+"label": "قائمشهر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 57.0,
+"price": 110000000
+},
+{
+"label": "قائمشهر",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 110000000
+},
+{
+"label": "قائمشهر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 165000000
+},
+{
+"label": "قائمشهر",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 165000000
+},
+{
+"label": "آمل",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 135000000
+},
+{
+"label": "آمل",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 135000000
+},
+{
+"label": "آمل",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 63.0,
+"price": 95000000
+},
+{
+"label": "هراز",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 101.0,
+"price": 110000000
+},
+{
+"label": "هراز",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 205000000
+},
+{
+"label": "هراز",
+"cityFa": "مازندران",
+"type": "bridge",
+"m2": 94.0,
+"price": 175000000
+},
+{
+"label": "فیروزکوه",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 140000000
+},
+{
+"label": "فیروزکوه",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 155000000
+},
+{
+"label": "فیروزکوه",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 110000000
+},
+{
+"label": "فیروزکوه",
+"cityFa": "مازندران",
+"type": "bulletin",
+"m2": 62.0,
+"price": 110000000
+}
+]
+}

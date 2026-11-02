@@ -28,7 +28,7 @@ function solve(A, y, ridge = 0.3) {
  * @param rows  [{ price, m2, type, corridor }]  (corridor: highway key or 'street')
  * @returns model with predict(row)
  */
-export function fitRateCard(rows) {
+export function fitRateCard(rows, { recenter = false } = {}) {
   const ok = rows.filter(r => r.price > 0);
   if (ok.length < 12) return null;
   const count = {}; ok.forEach(r => { count[r.corridor] = (count[r.corridor] || 0) + 1; });
@@ -37,11 +37,18 @@ export function fitRateCard(rows) {
     ...CORR.map(c => (r.corridor === c ? 1 : 0))];
   const beta = solve(ok.map(feat), ok.map(r => Math.log(r.price)));
   // the face-size elasticity is kept in a sane band (bigger faces cost more, but not proportionally)
+  const raw = beta[1];
   beta[1] = Math.max(0.2, Math.min(0.9, beta[1]));
+  // after clamping the size elasticity the other terms no longer fit: refit them with the elasticity held fixed
+  // (used for the provincial cards, where small bridge faces on main squares cost more than large boards elsewhere)
+  if (recenter && beta[1] !== raw) {
+    const rest = solve(ok.map(r => feat(r).filter((_, i) => i !== 1)), ok.map(r => Math.log(r.price) - beta[1] * Math.log(r.m2 || DEFAULT_M2[r.type] || 40)));
+    rest.forEach((v, j) => { beta[j < 1 ? j : j + 1] = v; });
+  }
   const predict = r => Math.exp(feat(r).reduce((s, v, i) => s + v * beta[i], 0));
   const resid = ok.map(r => Math.log(r.price) - Math.log(predict(r)));
   const rmse = Math.sqrt(resid.reduce((s, v) => s + v * v, 0) / resid.length);
-  return { predict, beta, corridors: CORR, n: ok.length, rmse };
+  return { predict, beta, corridors: CORR, n: ok.length, rmse, sizeElasticity: +raw.toFixed(2) };
 }
 
 export const median = v => { const s = v.filter(Number.isFinite).sort((a, b) => a - b), m = s.length >> 1; return !s.length ? null : s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
