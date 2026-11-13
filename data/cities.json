@@ -1,5 +1,5 @@
 {
- "updatedAt": "2026-11-13T00:03:11.149Z",
+ "updatedAt": "2026-11-13T03:49:26.994Z",
  "cities": {
   "karaj": {
    "fa": "کرج",
@@ -9,7 +9,7 @@
    "districts": 10,
    "limited": false,
    "roadsAt": "2026-11-12T23:58:07.987Z",
-   "marketAt": "2026-11-13T00:00:52.820Z",
+   "marketAt": "2026-11-13T03:46:32.541Z",
    "trafficAt": "2026-11-13T00:02:19.250Z"
   },
   "isfahan": {
@@ -19,9 +19,9 @@
    "hotspots": 241,
    "districts": 15,
    "limited": false,
-   "roadsAt": "2026-11-02T11:03:01.411Z",
-   "marketAt": "2026-11-13T00:02:19.286Z",
-   "trafficAt": "2026-10-31T07:38:54.849Z"
+   "roadsAt": "2026-11-13T03:42:58.764Z",
+   "marketAt": "2026-11-13T03:46:32.585Z",
+   "trafficAt": "2026-11-13T03:48:00.318Z"
   },
   "mashhad": {
    "fa": "مشهد",
@@ -30,9 +30,9 @@
    "hotspots": 274,
    "districts": 12,
    "limited": false,
-   "roadsAt": "2026-11-02T13:02:36.682Z",
-   "marketAt": "2026-11-13T00:02:19.323Z",
-   "trafficAt": "2026-10-29T23:58:22.934Z"
+   "roadsAt": "2026-11-13T03:45:57.968Z",
+   "marketAt": "2026-11-13T03:48:00.360Z",
+   "trafficAt": "2026-11-13T03:49:26.749Z"
   },
   "shiraz": {
    "fa": "شیراز",
@@ -42,7 +42,7 @@
    "districts": 11,
    "limited": false,
    "roadsAt": "2026-11-02T13:12:28.532Z",
-   "marketAt": "2026-11-13T00:02:19.360Z",
+   "marketAt": "2026-11-13T03:49:26.791Z",
    "trafficAt": "2026-10-29T23:59:57.181Z"
   },
   "kerman": {
@@ -53,7 +53,7 @@
    "districts": 5,
    "limited": true,
    "roadsAt": "2026-11-05T23:49:28.888Z",
-   "marketAt": "2026-11-13T00:02:19.395Z",
+   "marketAt": "2026-11-13T03:49:26.832Z",
    "trafficAt": "2026-11-05T23:58:44.415Z"
   },
   "yazd": {
@@ -64,7 +64,7 @@
    "districts": 0,
    "limited": false,
    "roadsAt": "2026-11-05T23:57:43.940Z",
-   "marketAt": "2026-11-13T00:02:19.431Z",
+   "marketAt": "2026-11-13T03:49:26.872Z",
    "trafficAt": "2026-11-06T00:00:11.645Z"
   },
   "sari": {
@@ -75,7 +75,7 @@
    "districts": 3,
    "limited": true,
    "roadsAt": "2026-11-06T03:51:45.758Z",
-   "marketAt": "2026-11-13T00:02:19.467Z",
+   "marketAt": "2026-11-13T03:49:26.913Z",
    "trafficAt": "2026-10-31T06:52:39.014Z"
   },
   "tabriz": {
@@ -86,7 +86,7 @@
    "districts": 0,
    "limited": false,
    "roadsAt": "2026-11-06T03:54:14.114Z",
-   "marketAt": "2026-11-13T00:02:19.509Z",
+   "marketAt": "2026-11-13T03:49:26.953Z",
    "trafficAt": "2026-11-01T22:51:23.515Z"
   },
   "gorgan": {
@@ -97,7 +97,7 @@
    "districts": 0,
    "limited": true,
    "roadsAt": "2026-11-13T00:00:20.334Z",
-   "marketAt": "2026-11-13T00:02:19.556Z",
+   "marketAt": "2026-11-13T03:49:26.994Z",
    "trafficAt": "2026-11-13T00:03:11.149Z"
   }
  }
